@@ -295,6 +295,13 @@ function App() {
       .then(async (response) => {
         const user = await response.json();
         if (!response.ok) throw new Error(user.message || "Google sign-in could not be completed.");
+        // Admin access is granted from trusted app_metadata by the server. Keep
+        // the OAuth access token for the protected admin page and open it directly.
+        if (user.app_metadata?.role === "admin") {
+          sessionStorage.setItem("celly-admin-token", accessToken);
+          window.location.replace("/admin");
+          return;
+        }
         setCustomer({
           id: user.id,
           email: user.email,

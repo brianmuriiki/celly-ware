@@ -997,7 +997,7 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
         if (!uploadResponse.ok) throw new Error(uploadResult.error || "Could not upload this image.");
         images = [...images, ...(uploadResult.urls || [uploadResult.url]).filter(Boolean)];
       }
-      if (images.length < 2) throw new Error("Add at least two images for this product.");
+      if (images.length < 1) throw new Error("Add at least one image for this product.");
       const savedProduct = { ...product, image: images[0], images };
       const response = await fetch(`${API}/products${editing ? `/${editing.id}` : ""}`, {
         method: editing ? "PUT" : "POST",
@@ -1289,7 +1289,7 @@ function ProductForm({ initial, onCancel, onSave }: { initial: Product | null; o
     setSaving(true);
     setError("");
     if (existingImages.length + selectedImages.length < 2) {
-      setError("Add at least two images for this product.");
+      setError("Add at least one image for this product.");
       setSaving(false);
       return;
     }
@@ -1330,7 +1330,7 @@ function ProductForm({ initial, onCancel, onSave }: { initial: Product | null; o
             setSelectedImages((current) => [...current, ...files.slice(0, remaining).map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
           }
           event.target.value = "";
-        }} type="file" /><span className="upload-help">Add at least 2 images, up to 8 total. JPG, PNG, or WebP · max 5 MB each. {existingImages.length + selectedImages.length}/8 selected</span></label>
+        }} type="file" /><span className="upload-help">Add 1 to 8 images. JPG, PNG, or WebP · max 5 MB each. {existingImages.length + selectedImages.length}/8 selected</span></label>
         {(existingImages.length > 0 || selectedImages.length > 0) && <div className="product-image-preview sm:col-span-2">
           {existingImages.map((image, index) => <div className="product-image-tile" key={`${image}-${index}`}><img alt={`Product photo ${index + 1}`} src={image} /><button aria-label={`Remove product photo ${index + 1}`} onClick={() => setExistingImages((current) => current.filter((_, imageIndex) => imageIndex !== index))} type="button">×</button></div>)}
           {selectedImages.map(({ preview }, index) => <div className="product-image-tile" key={preview}><img alt={`New product photo ${existingImages.length + index + 1}`} src={preview} /><button aria-label={`Remove new product photo ${existingImages.length + index + 1}`} onClick={() => setSelectedImages((current) => current.filter((_, selectedIndex) => selectedIndex !== index))} type="button">×</button></div>)}

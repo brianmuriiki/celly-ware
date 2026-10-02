@@ -247,7 +247,7 @@ app.post("/make-server-f5814922/products", async (c) => {
   if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
   const product = await c.req.json();
   const images = Array.isArray(product.images) ? [...new Set(product.images.filter((image: any) => typeof image === "string" && image.trim()))] : [];
-  if (images.length < 2 || images.length > 8) return c.json({ error: "Each product needs between two and eight images" }, 400);
+  if (images.length < 1 || images.length > 8) return c.json({ error: "Each product needs between one and eight images" }, 400);
   product.images = images;
   product.image = images[0];
   const products = await getProducts();
@@ -259,7 +259,7 @@ app.put("/make-server-f5814922/products/:id", async (c) => {
   if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
   const product = await c.req.json();
   const images = Array.isArray(product.images) ? [...new Set(product.images.filter((image: any) => typeof image === "string" && image.trim()))] : [];
-  if (images.length < 2 || images.length > 8) return c.json({ error: "Each product needs between two and eight images" }, 400);
+  if (images.length < 1 || images.length > 8) return c.json({ error: "Each product needs between one and eight images" }, 400);
   product.images = images;
   product.image = images[0];
   const products = await getProducts();

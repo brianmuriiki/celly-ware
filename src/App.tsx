@@ -17,6 +17,7 @@ type StoreOffer = {
   id: string;
   title: string;
   description: string;
+  image: string;
   discountLabel: string;
   promoCode: string;
   startsAt: string;
@@ -403,6 +404,7 @@ function App() {
               <a href="#shop">Shop</a>
               <a href="#story">Our story</a>
               <a href="#track">Track order</a>
+              <a href="#contact">Contact</a>
             </div>
           </div>
           <a className="brand" href="#">CELLY<span>WARE</span></a>
@@ -419,7 +421,7 @@ function App() {
             </button>
           </div>
         </nav>
-        {menuOpen && <nav aria-label="Mobile navigation" className="flex flex-col gap-4 border-t border-stone-200 px-5 py-4 text-xs font-semibold uppercase tracking-widest lg:hidden" onClick={() => setMenuOpen(false)}><a href="#shop">Shop</a><a href="#track">Track order</a><a href="#story">Our story</a><a href="#newsletter">Newsletter</a></nav>}
+        {menuOpen && <nav aria-label="Mobile navigation" className="flex flex-col gap-4 border-t border-stone-200 px-5 py-4 text-xs font-semibold uppercase tracking-widest lg:hidden" onClick={() => setMenuOpen(false)}><a href="#shop">Shop</a><a href="#track">Track order</a><a href="#story">Our story</a><a href="#contact">Contact</a><a href="#newsletter">Newsletter</a></nav>}
         {searchOpen && (
           <div className="mx-auto flex max-w-2xl items-center gap-3 border-t border-stone-200 px-5 py-4">
             <Icon name="search" className="text-stone-400" />
@@ -507,6 +509,19 @@ function App() {
           </div>
         </section>
 
+        <section aria-labelledby="contact-heading" className="contact-section" id="contact">
+          <div className="contact-intro">
+            <p className="eyebrow">Here for you</p>
+            <h2 className="section-title" id="contact-heading">Let’s talk style.</h2>
+            <p>Questions about an order, sizing, or a new piece? Get in touch with Celly-Ware.</p>
+          </div>
+          <div className="contact-options">
+            <a className="contact-card" href="tel:+254748294837"><span>Call us</span><strong>0748 294 837</strong><small>Tap to call</small></a>
+            <a className="contact-card" href="mailto:cellyware23@gmail.com"><span>Email us</span><strong>cellyware23@gmail.com</strong><small>Tap to send an email</small></a>
+            <a className="contact-card contact-card--whatsapp" href="https://chat.whatsapp.com/J3YQnaePEQUDeztJTDV32t?s=sh&amp;p=a&amp;ilr=4&amp;iam=2" rel="noreferrer" target="_blank"><span>Join our community</span><strong>WhatsApp group</strong><small>Get updates and connect with us ↗</small></a>
+          </div>
+        </section>
+
         <section className="newsletter" id="newsletter">
           <p className="eyebrow text-white/60">Stay in the know</p>
           <h2>First look at every drop.</h2>
@@ -534,7 +549,7 @@ function App() {
           <p>Your style, beautifully chosen.</p>
         </div>
         <div><strong>Shop</strong><a href="#shop">New arrivals</a><a href="#shop">Dresses</a><a href="#shop">Shoes</a></div>
-        <div><strong>Help</strong><a href="#track">Track your order</a><a href="https://wa.me/254748294837">Delivery & orders</a><a href="https://wa.me/254748294837">WhatsApp us</a></div>
+        <div><strong>Help</strong><a href="#track">Track your order</a><a href="#contact">Contact us</a><a href="https://chat.whatsapp.com/J3YQnaePEQUDeztJTDV32t?s=sh&amp;p=a&amp;ilr=4&amp;iam=2" rel="noreferrer" target="_blank">Join WhatsApp group</a></div>
         <div><strong>Follow</strong><a className="flex items-center gap-2" href="#"><Icon name="instagram" size={17} /> Instagram</a></div>
       </footer>
 
@@ -638,6 +653,7 @@ function OffersBanner() {
     <section aria-label="Current offers" className="offers-strip">
       {offers.map((offer) => (
         <article className="offer-banner" key={offer.id}>
+          {offer.image && <img alt="" className="offer-banner-image" src={offer.image} />}
           <div className="offer-banner-copy">
             {offer.discountLabel && <span className="offer-kicker">{offer.discountLabel}</span>}
             <h2>{offer.title}</h2>
@@ -1063,13 +1079,26 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
       notify("Product removed");
     } else setError("Could not delete. Check admin permissions.");
   };
-  const saveOffer = async (offer: Omit<StoreOffer, "id" | "createdAt">, id?: string): Promise<string | null> => {
+  const saveOffer = async (offer: Omit<StoreOffer, "id" | "createdAt">, id?: string, imageFile?: File | null): Promise<string | null> => {
     setBusy(true);
     try {
+      let offerToSave = offer;
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append("file", imageFile);
+        const uploadResponse = await fetch(`${API}/product-images`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        const uploadResult = await uploadResponse.json().catch(() => ({}));
+        if (!uploadResponse.ok) throw new Error(uploadResult.error || "Could not upload the offer image.");
+        offerToSave = { ...offer, image: uploadResult.url || uploadResult.urls?.[0] || "" };
+      }
       const response = await fetch(`${API}/admin/offers${id ? `/${id}` : ""}`, {
         method: id ? "PUT" : "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(offer),
+        body: JSON.stringify(offerToSave),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not save this offer.");
@@ -1113,7 +1142,7 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
         ) : adding || editing ? (
           <ProductForm initial={editing} onCancel={() => { setAdding(false); setEditing(null); }} onSave={save} />
         ) : addingOffer || editingOffer ? (
-          <OfferForm initial={editingOffer} onCancel={() => { setAddingOffer(false); setEditingOffer(null); }} onSave={(offer) => saveOffer(offer, editingOffer?.id)} />
+          <OfferForm initial={editingOffer} onCancel={() => { setAddingOffer(false); setEditingOffer(null); }} onSave={(offer, imageFile) => saveOffer(offer, editingOffer?.id, imageFile)} />
         ) : (
           <div className="admin-content">
             <div className="admin-tabs">
@@ -1130,7 +1159,7 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
               {products.map((product) => <div className="admin-row" key={product.id}><img alt="" src={product.image} /><div className="flex-1"><strong>{product.name}</strong><span>{product.category} · {money(product.price)}</span></div><button aria-label="Edit" onClick={() => setEditing(product)} type="button"><Icon name="edit" /></button><button aria-label="Delete" onClick={() => remove(product)} type="button"><Icon name="trash" /></button></div>)}
             </div> : view === "finance" ? <FinanceDashboard orders={orders} /> : view === "offers" ? <div className="offer-admin-list">
               {!offers.length && <p className="py-12 text-center text-sm text-stone-500">No offers yet. Create a campaign to feature it on the storefront.</p>}
-              {offers.map((offer) => <article className="offer-admin-row" key={offer.id}><div className="offer-admin-copy"><div className="offer-admin-title"><strong>{offer.title}</strong><span className={`offer-state offer-state--${offerState(offer)}`}>{offerState(offer)}</span></div><p>{offer.description}</p><span>{offer.discountLabel || "Promotion"}{offer.promoCode ? ` · Code ${offer.promoCode}` : ""}</span><span>{offer.startsAt ? `Starts ${new Date(offer.startsAt).toLocaleString("en-KE")}` : "Starts now"}{offer.endsAt ? ` · Ends ${new Date(offer.endsAt).toLocaleString("en-KE")}` : " · No end date"}</span></div><div className="offer-admin-actions"><button className="secondary-button" onClick={() => setEditingOffer(offer)} type="button">Edit</button><button aria-label={`Delete ${offer.title}`} onClick={() => removeOffer(offer)} type="button"><Icon name="trash" /></button></div></article>)}
+              {offers.map((offer) => <article className="offer-admin-row" key={offer.id}>{offer.image && <img alt="" className="offer-admin-image" src={offer.image} />}<div className="offer-admin-copy"><div className="offer-admin-title"><strong>{offer.title}</strong><span className={`offer-state offer-state--${offerState(offer)}`}>{offerState(offer)}</span></div><p>{offer.description}</p><span>{offer.discountLabel || "Promotion"}{offer.promoCode ? ` · Code ${offer.promoCode}` : ""}</span><span>{offer.startsAt ? `Starts ${new Date(offer.startsAt).toLocaleString("en-KE")}` : "Starts now"}{offer.endsAt ? ` · Ends ${new Date(offer.endsAt).toLocaleString("en-KE")}` : " · No end date"}</span></div><div className="offer-admin-actions"><button className="secondary-button" onClick={() => setEditingOffer(offer)} type="button">Edit</button><button aria-label={`Delete ${offer.title}`} onClick={() => removeOffer(offer)} type="button"><Icon name="trash" /></button></div></article>)}
             </div> : <div className="order-list">
               {view === "orders" && !orders.length && <p className="py-12 text-center text-sm text-stone-500">No orders yet.</p>}
               {view === "orders" && orders.map((order) => <article className="order-row" key={order.id}><div><strong>{order.name}</strong><p>{order.phone} · {order.location}</p>{order.customerEmail && <p>{order.customerEmail}</p>}<p>{order.items.map((item) => `${item.quantity}× ${item.name} (${item.size})`).join(", ")}</p>{order.note && <p>Note: {order.note}</p>}<label className="status-control">Status<select aria-label={`Status for order ${order.id}`} disabled={busy} onChange={(event) => updateOrderStatus(order, event.target.value)} value={order.status}>{["new", "confirmed", "packed", "dispatched", "delivered", "cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}</select></label></div><div><strong>{money(order.total)}</strong><span>{new Date(order.createdAt).toLocaleDateString("en-KE")}</span><a href={`https://wa.me/254${order.phone.replace(/\D/g, "").replace(/^0/, "")}`} rel="noreferrer" target="_blank">Message customer</a></div></article>)}
@@ -1223,9 +1252,15 @@ function FinanceDashboard({ orders }: { orders: Order[] }) {
   );
 }
 
-function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; onCancel: () => void; onSave: (offer: Omit<StoreOffer, "id" | "createdAt">) => Promise<string | null> }) {
+function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; onCancel: () => void; onSave: (offer: Omit<StoreOffer, "id" | "createdAt">, imageFile: File | null) => Promise<string | null> }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [image, setImage] = useState(initial?.image || "");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState(initial?.image || "");
+  useEffect(() => () => {
+    if (imageFile && imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
+  }, [imageFile, imagePreview]);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
@@ -1235,6 +1270,11 @@ function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; 
     const endsAtValue = String(data.get("endsAt") || "");
     const startsAt = startsAtValue ? new Date(startsAtValue) : null;
     const endsAt = endsAtValue ? new Date(endsAtValue) : null;
+    if (!image && !imageFile) {
+      setError("Choose an image for this offer.");
+      setSaving(false);
+      return;
+    }
     if ((startsAt && !Number.isFinite(startsAt.getTime())) || (endsAt && !Number.isFinite(endsAt.getTime()))) {
       setError("Enter a valid start and end date.");
       setSaving(false);
@@ -1248,12 +1288,13 @@ function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; 
     const message = await onSave({
       title: String(data.get("title")).trim(),
       description: String(data.get("description")).trim(),
+      image,
       discountLabel: String(data.get("discountLabel") || "").trim(),
       promoCode: String(data.get("promoCode") || "").trim(),
       startsAt: startsAt?.toISOString() || "",
       endsAt: endsAt?.toISOString() || "",
       active: data.get("active") === "on",
-    });
+    }, imageFile);
     if (message) setError(message);
     setSaving(false);
   };
@@ -1264,6 +1305,20 @@ function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; 
       <div className="form-grid">
         <label className="sm:col-span-2">Headline<input defaultValue={initial?.title} maxLength={90} name="title" placeholder="Flash sale: 20% off this weekend" required /></label>
         <label className="sm:col-span-2">Message<textarea defaultValue={initial?.description} maxLength={300} name="description" placeholder="Tell customers what the offer includes." required rows={3} /></label>
+        <label className="sm:col-span-2">Offer image<input accept="image/jpeg,image/png,image/webp" onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) setError("Use a JPG, PNG, or WebP image.");
+          else if (file.size > 5 * 1024 * 1024) setError("The offer image must be 5 MB or smaller.");
+          else {
+            setError("");
+            setImage("");
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+          }
+          event.target.value = "";
+        }} type="file" /><span className="upload-help">Choose a JPG, PNG, or WebP image up to 5 MB.</span></label>
+        {imagePreview && <div className="offer-image-preview sm:col-span-2"><img alt="Offer preview" src={imagePreview} /><button aria-label="Remove offer image" onClick={() => { setImage(""); setImageFile(null); setImagePreview(""); }} type="button">Remove image</button></div>}
         <label>Offer label<input defaultValue={initial?.discountLabel} maxLength={60} name="discountLabel" placeholder="20% OFF · FLASH SALE" /></label>
         <label>Promo code<input defaultValue={initial?.promoCode} maxLength={40} name="promoCode" placeholder="CELLY20" /></label>
         <label>Starts at<input defaultValue={localDateTime(initial?.startsAt)} name="startsAt" type="datetime-local" /></label>

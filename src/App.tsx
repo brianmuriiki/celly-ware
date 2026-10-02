@@ -249,6 +249,7 @@ function App() {
     const saved = localStorage.getItem("celly-customer");
     return saved ? JSON.parse(saved) : null;
   });
+  const [isAdmin, setIsAdmin] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   useEffect(() => {
@@ -274,6 +275,24 @@ function App() {
   useEffect(() => {
     if (customer) localStorage.setItem("celly-customer", JSON.stringify(customer));
     else localStorage.removeItem("celly-customer");
+  }, [customer]);
+
+  useEffect(() => {
+    let active = true;
+    setIsAdmin(false);
+    sessionStorage.removeItem("celly-admin-token");
+    if (!customer?.accessToken) return () => { active = false; };
+
+    fetch(`${API}/admin/verify`, { headers: { Authorization: `Bearer ${customer.accessToken}` } })
+      .then((response) => {
+        if (!active) return;
+        if (response.ok) {
+          sessionStorage.setItem("celly-admin-token", customer.accessToken);
+          setIsAdmin(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
   }, [customer]);
 
   useEffect(() => {
@@ -555,6 +574,7 @@ function App() {
         <AccountModal
           authMessage={accountMessage}
           customer={customer}
+          isAdmin={isAdmin}
           notify={notify}
           onClose={() => setAccountOpen(false)}
           onCustomerChange={setCustomer}
@@ -776,7 +796,7 @@ function CartDrawer({ cart, customer, subtotal, updateQuantity, onClose, onOrder
   );
 }
 
-function AccountModal({ customer, onCustomerChange, onClose, notify, authMessage }: { customer: Customer | null; onCustomerChange: (customer: Customer | null) => void; onClose: () => void; notify: (message: string) => void; authMessage: string }) {
+function AccountModal({ customer, isAdmin, onCustomerChange, onClose, notify, authMessage }: { customer: Customer | null; isAdmin: boolean; onCustomerChange: (customer: Customer | null) => void; onClose: () => void; notify: (message: string) => void; authMessage: string }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -837,6 +857,7 @@ function AccountModal({ customer, onCustomerChange, onClose, notify, authMessage
           <h2>Hello, {customer.name || "beautiful"}</h2>
           <p className="account-email">{customer.email}</p>
           <p className="account-note"><Icon name="check" size={17} /> You’re signed in and ready to order.</p>
+          {isAdmin && <button className="primary-button w-full" onClick={() => { window.location.assign("/admin"); }} type="button">Admin portal <Icon name="arrow" /></button>}
           <button className="secondary-button w-full" onClick={() => { onCustomerChange(null); notify("You have signed out"); onClose(); }} type="button">Sign out</button>
         </section>
       </div>

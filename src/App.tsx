@@ -62,72 +62,6 @@ type IconName =
   | "user"
   | "whatsapp";
 
-const initialProducts: Product[] = [
-  {
-    id: "celly-001",
-    name: "Zuri Floral Maxi",
-    category: "Dresses",
-    price: 2850,
-    image:
-      "https://images.unsplash.com/photo-1625646741211-711bdd65c570?auto=format&fit=crop&w=900&q=85",
-    description: "A graceful, easy-moving floral maxi made for your best days.",
-    sizes: ["S", "M", "L", "XL"],
-    featured: true,
-  },
-  {
-    id: "celly-002",
-    name: "Nia Statement Set",
-    category: "Dresses",
-    price: 3200,
-    image:
-      "https://images.unsplash.com/photo-1709809081557-78f803ce93a0?auto=format&fit=crop&w=900&q=85",
-    description: "Bold colour, relaxed tailoring and an unforgettable silhouette.",
-    sizes: ["S", "M", "L"],
-    featured: true,
-  },
-  {
-    id: "celly-003",
-    name: "Amani City Heels",
-    category: "Shoes",
-    price: 2400,
-    image:
-      "https://images.unsplash.com/photo-1686319521522-e8891b3d5769?auto=format&fit=crop&w=900&q=85",
-    description: "Polished heels with a steady fit for day-to-night confidence.",
-    sizes: ["37", "38", "39", "40", "41"],
-  },
-  {
-    id: "celly-004",
-    name: "Safi Teal Jumpsuit",
-    category: "Dresses",
-    price: 2950,
-    image:
-      "https://images.unsplash.com/photo-1485570661444-73b3f0ff9d2f?auto=format&fit=crop&w=900&q=85",
-    description: "A clean, confident one-piece with a beautifully fluid drape.",
-    sizes: ["S", "M", "L", "XL"],
-    featured: true,
-  },
-  {
-    id: "celly-005",
-    name: "Imani Rouge Dress",
-    category: "Dresses",
-    price: 2650,
-    image:
-      "https://images.unsplash.com/photo-1560869576-0fe77ff7f9f4?auto=format&fit=crop&w=900&q=85",
-    description: "A rich red occasion dress designed to make an entrance.",
-    sizes: ["S", "M", "L"],
-  },
-  {
-    id: "celly-006",
-    name: "Malaika Blue Midi",
-    category: "Dresses",
-    price: 2500,
-    image:
-      "https://images.unsplash.com/photo-1623013736455-1b8d79cc0b5f?auto=format&fit=crop&w=900&q=85",
-    description: "An elegant blue midi with a flattering, timeless shape.",
-    sizes: ["M", "L", "XL"],
-  },
-];
-
 const categories = ["All", "Dresses", "Tops", "Shoes", "Accessories"] as const;
 const API = `https://${projectId}.supabase.co/functions/v1/make-server-f5814922`;
 const money = (amount: number) => `KSh ${amount.toLocaleString("en-KE")}`;
@@ -231,7 +165,7 @@ function ProductCard({
 }
 
 function App() {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [category, setCategory] = useState<(typeof categories)[number]>("All");
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -440,7 +374,7 @@ function App() {
       <main>
         <OffersBanner />
         <section className="hero">
-          <img alt="Woman wearing a red floral dress from the new collection" src={initialProducts[0].image} />
+          <img alt="Woman wearing a red floral dress from the new collection" src="https://images.unsplash.com/photo-1625646741211-711bdd65c570?auto=format&fit=crop&w=1600&q=85" />
           <div className="hero-overlay" />
           <div className="hero-content">
             <p className="eyebrow text-white/80">The newest edit</p>
@@ -485,7 +419,7 @@ function App() {
               ))}
             </div>
           ) : (
-            <div className="py-20 text-center text-stone-500">{savedOnly && !savedIds.length ? "You haven’t saved any pieces yet. Tap a heart on a product to add it here." : "No pieces found. Try another search."}</div>
+            <div className="py-20 text-center text-stone-500">{!products.length ? "Our collection is being updated. Please check back soon." : savedOnly && !savedIds.length ? "You haven’t saved any pieces yet. Tap a heart on a product to add it here." : "No pieces found. Try another search."}</div>
           )}
         </section>
 
@@ -493,7 +427,7 @@ function App() {
 
         <section className="story-section" id="story">
           <div className="story-image">
-            <img alt="Stylish women wearing teal outfits" src={initialProducts[3].image} />
+            <img alt="Stylish women wearing teal outfits" src="https://images.unsplash.com/photo-1485570661444-73b3f0ff9d2f?auto=format&fit=crop&w=1200&q=85" />
           </div>
           <div className="story-copy">
             <p className="eyebrow">The Celly-Ware promise</p>

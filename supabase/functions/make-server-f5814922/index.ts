@@ -5,6 +5,22 @@ import * as kv from "./kv_store.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 const app = new Hono();
 
+const mockProductIds = new Set([
+  "celly-001",
+  "celly-002",
+  "celly-003",
+  "celly-004",
+  "celly-005",
+  "celly-006",
+]);
+
+async function getProducts() {
+  const products = (await kv.get("products")) ?? [];
+  const realProducts = products.filter((product: any) => !mockProductIds.has(product.id));
+  if (realProducts.length !== products.length) await kv.set("products", realProducts);
+  return realProducts;
+}
+
 // Enable logger
 app.use('*', logger(console.log));
 
@@ -24,15 +40,6 @@ app.use(
 app.get("/make-server-f5814922/health", (c) => {
   return c.json({ status: "ok" });
 });
-
-const defaultProducts = [
-  { id: "celly-001", name: "Zuri Floral Maxi", category: "Dresses", price: 2850, image: "https://images.unsplash.com/photo-1625646741211-711bdd65c570?auto=format&fit=crop&w=900&q=85", description: "A graceful, easy-moving floral maxi made for your best days.", sizes: ["S", "M", "L", "XL"], featured: true },
-  { id: "celly-002", name: "Nia Statement Set", category: "Dresses", price: 3200, image: "https://images.unsplash.com/photo-1709809081557-78f803ce93a0?auto=format&fit=crop&w=900&q=85", description: "Bold colour, relaxed tailoring and an unforgettable silhouette.", sizes: ["S", "M", "L"], featured: true },
-  { id: "celly-003", name: "Amani City Heels", category: "Shoes", price: 2400, image: "https://images.unsplash.com/photo-1686319521522-e8891b3d5769?auto=format&fit=crop&w=900&q=85", description: "Polished heels with a steady fit for day-to-night confidence.", sizes: ["37", "38", "39", "40", "41"] },
-  { id: "celly-004", name: "Safi Teal Jumpsuit", category: "Dresses", price: 2950, image: "https://images.unsplash.com/photo-1485570661444-73b3f0ff9d2f?auto=format&fit=crop&w=900&q=85", description: "A clean, confident one-piece with a beautifully fluid drape.", sizes: ["S", "M", "L", "XL"], featured: true },
-  { id: "celly-005", name: "Imani Rouge Dress", category: "Dresses", price: 2650, image: "https://images.unsplash.com/photo-1560869576-0fe77ff7f9f4?auto=format&fit=crop&w=900&q=85", description: "A rich red occasion dress designed to make an entrance.", sizes: ["S", "M", "L"] },
-  { id: "celly-006", name: "Malaika Blue Midi", category: "Dresses", price: 2500, image: "https://images.unsplash.com/photo-1623013736455-1b8d79cc0b5f?auto=format&fit=crop&w=900&q=85", description: "An elegant blue midi with a flattering, timeless shape.", sizes: ["M", "L", "XL"] },
-];
 
 async function authenticatedUser(c: any) {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
@@ -145,11 +152,7 @@ async function sendOrderNotification(order: any): Promise<boolean> {
 }
 
 app.get("/make-server-f5814922/products", async (c) => {
-  let products = await kv.get("products");
-  if (!products) {
-    products = defaultProducts;
-    await kv.set("products", products);
-  }
+  const products = await getProducts();
   return c.json({ products });
 });
 
@@ -247,7 +250,7 @@ app.post("/make-server-f5814922/products", async (c) => {
   if (images.length < 2 || images.length > 8) return c.json({ error: "Each product needs between two and eight images" }, 400);
   product.images = images;
   product.image = images[0];
-  const products = (await kv.get("products")) ?? defaultProducts;
+  const products = await getProducts();
   await kv.set("products", [product, ...products]);
   return c.json({ product }, 201);
 });
@@ -259,14 +262,14 @@ app.put("/make-server-f5814922/products/:id", async (c) => {
   if (images.length < 2 || images.length > 8) return c.json({ error: "Each product needs between two and eight images" }, 400);
   product.images = images;
   product.image = images[0];
-  const products = (await kv.get("products")) ?? defaultProducts;
+  const products = await getProducts();
   await kv.set("products", products.map((item: any) => item.id === c.req.param("id") ? product : item));
   return c.json({ product });
 });
 
 app.delete("/make-server-f5814922/products/:id", async (c) => {
   if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
-  const products = (await kv.get("products")) ?? defaultProducts;
+  const products = await getProducts();
   await kv.set("products", products.filter((item: any) => item.id !== c.req.param("id")));
   return c.json({ success: true });
 });
@@ -278,7 +281,7 @@ app.post("/make-server-f5814922/orders", async (c) => {
   if (!order.name || !order.phone || !order.location || !Array.isArray(order.items) || !order.items.length) {
     return c.json({ error: "Missing order details" }, 400);
   }
-  const products = (await kv.get("products")) ?? defaultProducts;
+  const products = await getProducts();
   const items = [];
   for (const requested of order.items) {
     const product = products.find((item: any) => item.id === requested.id);

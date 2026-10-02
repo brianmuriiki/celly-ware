@@ -1,7 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { projectId, publicAnonKey } from "../utils/supabase/info";
 
-type Category = "Dresses" | "Tops" | "Shoes" | "Accessories";
+const productCategories = [
+  "Dresses",
+  "Tops",
+  "Trousers",
+  "Skirts",
+  "Jeans",
+  "Shorts",
+  "Jumpsuits",
+  "Co-ords",
+  "Outerwear",
+  "Shoes",
+  "Accessories",
+] as const;
+type Category = (typeof productCategories)[number];
 type Product = {
   id: string;
   name: string;
@@ -62,7 +75,7 @@ type IconName =
   | "user"
   | "whatsapp";
 
-const categories = ["All", "Dresses", "Tops", "Shoes", "Accessories"] as const;
+const categories = ["All", ...productCategories] as const;
 const API = `https://${projectId}.supabase.co/functions/v1/make-server-f5814922`;
 const money = (amount: number) => `KSh ${amount.toLocaleString("en-KE")}`;
 const productImageList = (product: Product) => {

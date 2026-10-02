@@ -1,0 +1,10 @@
+{
+  "description": "This e-commerce platform enables users to browse and purchase clothing and shoes, featuring a user-friendly cart system and WhatsApp support for customer inquiries.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

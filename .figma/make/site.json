@@ -1,7 +1,9 @@
 {
-  "description": "This e-commerce platform enables users to browse and purchase clothing and shoes, featuring a user-friendly cart system and WhatsApp support for customer inquiries.",
+  "title": "Celly-Ware | Women's Clothing and Shoes in Kenya",
+  "description": "Shop curated women's clothing, dresses, shoes, and accessories at Celly-Ware in Kenya. Discover new arrivals with countrywide delivery.",
+  "language": "en",
   "robots": {
-    "index": false
+    "index": true
   },
   "accessibility": {
     "addBypassLinks": false,

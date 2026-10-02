@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://celly-ware.vercel.app/sitemap.xml

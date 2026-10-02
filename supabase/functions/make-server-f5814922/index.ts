@@ -62,29 +62,40 @@ app.post("/make-server-f5814922/product-images", async (c) => {
   if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
 
   const formData = await c.req.formData();
-  const file = formData.get("file");
-  if (!(file instanceof File)) return c.json({ error: "Choose an image to upload" }, 400);
+  const uploadedFiles = formData.getAll("files").filter((value): value is File => value instanceof File);
+  const legacyFile = formData.get("file");
+  const files = uploadedFiles.length ? uploadedFiles : legacyFile instanceof File ? [legacyFile] : [];
+  if (!files.length) return c.json({ error: "Choose at least one image file to upload" }, 400);
+  if (files.length > 8) return c.json({ error: "Upload no more than 8 images at a time" }, 400);
   const extensions: Record<string, string> = {
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
   };
-  const extension = extensions[file.type];
-  if (!extension) return c.json({ error: "Use a JPG, PNG, or WebP image" }, 400);
-  if (file.size > 5 * 1024 * 1024) return c.json({ error: "Images must be 5 MB or smaller" }, 400);
+  for (const file of files) {
+    if (!extensions[file.type]) return c.json({ error: "Use JPG, PNG, or WebP images" }, 400);
+    if (file.size > 5 * 1024 * 1024) return c.json({ error: "Each image must be 5 MB or smaller" }, 400);
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-  const path = `${crypto.randomUUID()}.${extension}`;
-  const { error } = await supabase.storage.from("product-images").upload(path, file, {
-    contentType: file.type,
-    upsert: false,
-  });
-  if (error) return c.json({ error: error.message }, 500);
-  const { data } = supabase.storage.from("product-images").getPublicUrl(path);
-  return c.json({ url: data.publicUrl }, 201);
+  const paths: string[] = [];
+  for (const file of files) {
+    const path = `${crypto.randomUUID()}.${extensions[file.type]}`;
+    const { error } = await supabase.storage.from("product-images").upload(path, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+    if (error) {
+      if (paths.length) await supabase.storage.from("product-images").remove(paths);
+      return c.json({ error: error.message }, 500);
+    }
+    paths.push(path);
+  }
+  const urls = paths.map((path) => supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl);
+  return c.json({ urls, url: urls[0] }, 201);
 });
 
 async function sendOrderNotification(order: any): Promise<boolean> {
@@ -142,6 +153,81 @@ app.get("/make-server-f5814922/products", async (c) => {
   return c.json({ products });
 });
 
+function offerIsLive(offer: any, now = Date.now()) {
+  if (!offer.active) return false;
+  const startsAt = offer.startsAt ? Date.parse(offer.startsAt) : null;
+  const endsAt = offer.endsAt ? Date.parse(offer.endsAt) : null;
+  return (startsAt === null || (Number.isFinite(startsAt) && startsAt <= now))
+    && (endsAt === null || (Number.isFinite(endsAt) && endsAt >= now));
+}
+
+app.get("/make-server-f5814922/offers", async (c) => {
+  const offers = (await kv.get("offers")) ?? [];
+  return c.json({ offers: offers.filter((offer: any) => offerIsLive(offer)) });
+});
+
+app.get("/make-server-f5814922/admin/offers", async (c) => {
+  if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
+  const offers = (await kv.get("offers")) ?? [];
+  offers.sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt));
+  return c.json({ offers });
+});
+
+app.post("/make-server-f5814922/admin/offers", async (c) => {
+  if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
+  const input = await c.req.json();
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  const description = typeof input.description === "string" ? input.description.trim() : "";
+  if (!title || !description) return c.json({ error: "Offer title and message are required" }, 400);
+  if (title.length > 90 || description.length > 300) return c.json({ error: "Offer title or message is too long" }, 400);
+  const offers = (await kv.get("offers")) ?? [];
+  const offer = {
+    id: crypto.randomUUID(),
+    title,
+    description,
+    discountLabel: typeof input.discountLabel === "string" ? input.discountLabel.trim().slice(0, 60) : "",
+    promoCode: typeof input.promoCode === "string" ? input.promoCode.trim().slice(0, 40) : "",
+    startsAt: typeof input.startsAt === "string" && input.startsAt ? input.startsAt : "",
+    endsAt: typeof input.endsAt === "string" && input.endsAt ? input.endsAt : "",
+    active: input.active !== false,
+    createdAt: new Date().toISOString(),
+  };
+  offers.unshift(offer);
+  await kv.set("offers", offers);
+  return c.json({ offer }, 201);
+});
+
+app.put("/make-server-f5814922/admin/offers/:id", async (c) => {
+  if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
+  const input = await c.req.json();
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  const description = typeof input.description === "string" ? input.description.trim() : "";
+  if (!title || !description) return c.json({ error: "Offer title and message are required" }, 400);
+  if (title.length > 90 || description.length > 300) return c.json({ error: "Offer title or message is too long" }, 400);
+  const offers = (await kv.get("offers")) ?? [];
+  const existing = offers.find((offer: any) => offer.id === c.req.param("id"));
+  if (!existing) return c.json({ error: "Offer not found" }, 404);
+  const updated = {
+    ...existing,
+    title,
+    description,
+    discountLabel: typeof input.discountLabel === "string" ? input.discountLabel.trim().slice(0, 60) : "",
+    promoCode: typeof input.promoCode === "string" ? input.promoCode.trim().slice(0, 40) : "",
+    startsAt: typeof input.startsAt === "string" && input.startsAt ? input.startsAt : "",
+    endsAt: typeof input.endsAt === "string" && input.endsAt ? input.endsAt : "",
+    active: input.active !== false,
+  };
+  await kv.set("offers", offers.map((offer: any) => offer.id === updated.id ? updated : offer));
+  return c.json({ offer: updated });
+});
+
+app.delete("/make-server-f5814922/admin/offers/:id", async (c) => {
+  if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
+  const offers = (await kv.get("offers")) ?? [];
+  await kv.set("offers", offers.filter((offer: any) => offer.id !== c.req.param("id")));
+  return c.json({ success: true });
+});
+
 app.post("/make-server-f5814922/newsletter", async (c) => {
   const body = await c.req.json();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -155,6 +241,10 @@ app.post("/make-server-f5814922/newsletter", async (c) => {
 app.post("/make-server-f5814922/products", async (c) => {
   if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
   const product = await c.req.json();
+  const images = Array.isArray(product.images) ? [...new Set(product.images.filter((image: any) => typeof image === "string" && image.trim()))] : [];
+  if (images.length < 2 || images.length > 8) return c.json({ error: "Each product needs between two and eight images" }, 400);
+  product.images = images;
+  product.image = images[0];
   const products = (await kv.get("products")) ?? defaultProducts;
   await kv.set("products", [product, ...products]);
   return c.json({ product }, 201);
@@ -163,6 +253,10 @@ app.post("/make-server-f5814922/products", async (c) => {
 app.put("/make-server-f5814922/products/:id", async (c) => {
   if (!(await requireAdmin(c))) return c.json({ error: "Admin access required" }, 403);
   const product = await c.req.json();
+  const images = Array.isArray(product.images) ? [...new Set(product.images.filter((image: any) => typeof image === "string" && image.trim()))] : [];
+  if (images.length < 2 || images.length > 8) return c.json({ error: "Each product needs between two and eight images" }, 400);
+  product.images = images;
+  product.image = images[0];
   const products = (await kv.get("products")) ?? defaultProducts;
   await kv.set("products", products.map((item: any) => item.id === c.req.param("id") ? product : item));
   return c.json({ product });

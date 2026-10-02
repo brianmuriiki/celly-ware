@@ -8,9 +8,21 @@ type Product = {
   category: Category;
   price: number;
   image: string;
+  images?: string[];
   description: string;
   sizes: string[];
   featured?: boolean;
+};
+type StoreOffer = {
+  id: string;
+  title: string;
+  description: string;
+  discountLabel: string;
+  promoCode: string;
+  startsAt: string;
+  endsAt: string;
+  active: boolean;
+  createdAt: string;
 };
 type CartItem = Product & { quantity: number; size: string };
 type Order = {
@@ -118,6 +130,18 @@ const initialProducts: Product[] = [
 const categories = ["All", "Dresses", "Tops", "Shoes", "Accessories"] as const;
 const API = `https://${projectId}.supabase.co/functions/v1/make-server-f5814922`;
 const money = (amount: number) => `KSh ${amount.toLocaleString("en-KE")}`;
+const productImageList = (product: Product) => {
+  const images = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
+  if (product.image && !images.includes(product.image)) images.unshift(product.image);
+  return images;
+};
+function offerState(offer: StoreOffer): "live" | "scheduled" | "expired" | "paused" {
+  if (!offer.active) return "paused";
+  const now = Date.now();
+  if (offer.startsAt && new Date(offer.startsAt).getTime() > now) return "scheduled";
+  if (offer.endsAt && new Date(offer.endsAt).getTime() < now) return "expired";
+  return "live";
+}
 
 function Icon({
   name,
@@ -183,7 +207,7 @@ function ProductCard({
         <img
           alt={product.name}
           className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-          src={product.image}
+          src={productImageList(product)[0] || product.image}
         />
         {product.featured && <span className="product-badge">Bestseller</span>}
         <button aria-label={`${saved ? "Remove" : "Save"} ${product.name}`} aria-pressed={saved} className={`heart-btn ${saved ? "saved" : ""}`} onClick={() => onToggleSaved(product)} type="button">
@@ -386,6 +410,7 @@ function App() {
       </header>
 
       <main>
+        <OffersBanner />
         <section className="hero">
           <img alt="Woman wearing a red floral dress from the new collection" src={initialProducts[0].image} />
           <div className="hero-overlay" />
@@ -518,7 +543,7 @@ function App() {
           updateQuantity={updateQuantity}
         />
       )}
-      {selected && <ProductModal onAdd={addToCart} onClose={() => setSelected(null)} product={selected} />}
+      {selected && <ProductModal key={selected.id} onAdd={addToCart} onClose={() => setSelected(null)} product={selected} />}
       {accountOpen && (
         <AccountModal
           authMessage={accountMessage}
@@ -535,11 +560,22 @@ function App() {
 
 function ProductModal({ product, onAdd, onClose }: { product: Product; onAdd: (p: Product, size: string) => void; onClose: () => void }) {
   const [size, setSize] = useState(product.sizes[0]);
+  const [imageIndex, setImageIndex] = useState(0);
+  const images = productImageList(product);
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="product-modal" onMouseDown={(event) => event.stopPropagation()}>
         <button className="modal-close" aria-label="Close" onClick={onClose} type="button"><Icon name="close" /></button>
-        <img alt={product.name} src={product.image} />
+        <div className="product-gallery">
+          <img alt={`${product.name} photo ${imageIndex + 1} of ${images.length}`} src={images[imageIndex] || product.image} />
+          {images.length > 1 && <>
+            <button aria-label="Previous product image" className="gallery-arrow gallery-arrow--left" onClick={() => setImageIndex((index) => (index - 1 + images.length) % images.length)} type="button"><Icon name="arrow" /></button>
+            <button aria-label="Next product image" className="gallery-arrow gallery-arrow--right" onClick={() => setImageIndex((index) => (index + 1) % images.length)} type="button"><Icon name="arrow" /></button>
+            <div aria-label="Choose product image" className="gallery-thumbnails">
+              {images.map((image, index) => <button aria-label={`Show product image ${index + 1}`} aria-pressed={imageIndex === index} className={imageIndex === index ? "active" : ""} key={`${image}-${index}`} onClick={() => setImageIndex(index)} type="button"><img alt="" src={image} /></button>)}
+            </div>
+          </>}
+        </div>
         <div className="p-7 sm:p-10">
           <p className="eyebrow">{product.category}</p>
           <h2 className="font-serif text-4xl">{product.name}</h2>
@@ -553,6 +589,41 @@ function ProductModal({ product, onAdd, onClose }: { product: Product; onAdd: (p
         </div>
       </div>
     </div>
+  );
+}
+
+function OffersBanner() {
+  const [offers, setOffers] = useState<StoreOffer[]>([]);
+  useEffect(() => {
+    let active = true;
+    fetch(`${API}/offers`, { headers: { Authorization: `Bearer ${publicAnonKey}` } })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json();
+        if (active) setOffers(data.offers || []);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  if (!offers.length) return null;
+  return (
+    <section aria-label="Current offers" className="offers-strip">
+      {offers.map((offer) => (
+        <article className="offer-banner" key={offer.id}>
+          <div className="offer-banner-copy">
+            {offer.discountLabel && <span className="offer-kicker">{offer.discountLabel}</span>}
+            <h2>{offer.title}</h2>
+            <p>{offer.description}</p>
+          </div>
+          <div className="offer-banner-action">
+            {offer.promoCode && <span>Use code <strong>{offer.promoCode}</strong></span>}
+            {offer.endsAt && <span>Ends {new Date(offer.endsAt).toLocaleDateString("en-KE", { dateStyle: "medium" })}</span>}
+            <a href="#shop">Shop now <Icon name="arrow" size={16} /></a>
+          </div>
+        </article>
+      ))}
+    </section>
   );
 }
 
@@ -674,7 +745,7 @@ function CartDrawer({ cart, customer, subtotal, updateQuantity, onClose, onOrder
               {!cart.length && <div className="grid h-full place-content-center text-center"><Icon className="mx-auto text-stone-400" name="bag" size={34} /><p className="mt-4 font-serif text-2xl">Your bag is waiting</p><p className="mt-2 text-sm text-stone-500">Add something beautiful.</p></div>}
               {cart.map((item) => (
                 <div className="cart-item" key={`${item.id}-${item.size}`}>
-                  <img alt={item.name} src={item.image} />
+                  <img alt={item.name} src={productImageList(item)[0] || item.image} />
                   <div className="flex-1"><h3>{item.name}</h3><p>Size {item.size}</p><strong>{money(item.price)}</strong><div className="quantity"><button onClick={() => updateQuantity(item.id, item.size, -1)} type="button"><Icon name="minus" size={14} /></button><span>{item.quantity}</span><button onClick={() => updateQuantity(item.id, item.size, 1)} type="button"><Icon name="plus" size={14} /></button></div></div>
                 </div>
               ))}
@@ -775,7 +846,13 @@ function AccountModal({ customer, onCustomerChange, onClose, notify, authMessage
         <p className="account-subtitle">{mode === "login" ? "Sign in before placing your order." : "Join us for a faster, safer checkout."}</p>
         {authMessage && <p className="error" role="alert">{authMessage}</p>}
         <button className="google-button" disabled={googleBusy} onClick={signInWithGoogle} type="button">
-          <span className="google-mark" aria-hidden="true">G</span>{googleBusy ? "Connecting..." : "Continue with Google"}
+          <svg aria-hidden="true" className="google-mark" viewBox="0 0 48 48">
+            <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z" />
+            <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z" />
+            <path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3Z" />
+            <path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.9-5.9C34.1 5.9 29.5 4 24 4A20 20 0 0 0 5.8 15.1l6.8 5.3C14.2 15.6 18.7 12 24 12Z" />
+          </svg>
+          <span>{googleBusy ? "Connecting..." : "Continue with Google"}</span>
         </button>
         <div className="auth-divider"><span>or continue with email</span></div>
         <form onSubmit={submit}>
@@ -799,9 +876,12 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<"products" | "orders" | "newsletter">("products");
+  const [view, setView] = useState<"products" | "orders" | "newsletter" | "offers" | "finance">("products");
   const [orders, setOrders] = useState<Order[]>([]);
   const [subscribers, setSubscribers] = useState<NewsletterSignup[]>([]);
+  const [offers, setOffers] = useState<StoreOffer[]>([]);
+  const [addingOffer, setAddingOffer] = useState(false);
+  const [editingOffer, setEditingOffer] = useState<StoreOffer | null>(null);
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -829,6 +909,17 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load orders."); }
     finally { setBusy(false); }
   };
+  const loadFinance = async () => {
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`${API}/orders`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(response.status === 403 ? "This account needs the admin role in Supabase." : "Could not load order totals.");
+      const data = await response.json();
+      setOrders(data.orders || []);
+      setView("finance");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load order totals."); }
+    finally { setBusy(false); }
+  };
   const loadSubscribers = async () => {
     setBusy(true); setError("");
     try {
@@ -838,6 +929,17 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
       setSubscribers(data.subscribers);
       setView("newsletter");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load subscribers."); }
+    finally { setBusy(false); }
+  };
+  const loadOffers = async () => {
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`${API}/admin/offers`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(response.status === 403 ? "This account needs the admin role in Supabase." : "Could not load offers.");
+      const data = await response.json();
+      setOffers(data.offers || []);
+      setView("offers");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load offers."); }
     finally { setBusy(false); }
   };
   const updateOrderStatus = async (order: Order, status: string) => {
@@ -859,6 +961,7 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
     setToken("");
     setOrders([]);
     setSubscribers([]);
+    setOffers([]);
     setView("products");
   };
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -882,13 +985,13 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign in."); }
     finally { setBusy(false); }
   };
-  const save = async (product: Product, imageFile: File | null): Promise<string | null> => {
+  const save = async (product: Product, imageFiles: File[]): Promise<string | null> => {
     setBusy(true);
     try {
-      let savedProduct = product;
-      if (imageFile) {
+      let images = productImageList(product);
+      if (imageFiles.length) {
         const formData = new FormData();
-        formData.set("file", imageFile);
+        imageFiles.forEach((file) => formData.append("files", file));
         const uploadResponse = await fetch(`${API}/product-images`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
@@ -896,9 +999,10 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
         });
         const uploadResult = await uploadResponse.json().catch(() => ({}));
         if (!uploadResponse.ok) throw new Error(uploadResult.error || "Could not upload this image.");
-        savedProduct = { ...product, image: uploadResult.url };
+        images = [...images, ...(uploadResult.urls || [uploadResult.url]).filter(Boolean)];
       }
-      if (!savedProduct.image) throw new Error("Choose a product image from your device.");
+      if (images.length < 2) throw new Error("Add at least two images for this product.");
+      const savedProduct = { ...product, image: images[0], images };
       const response = await fetch(`${API}/products${editing ? `/${editing.id}` : ""}`, {
         method: editing ? "PUT" : "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -926,6 +1030,38 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
       notify("Product removed");
     } else setError("Could not delete. Check admin permissions.");
   };
+  const saveOffer = async (offer: Omit<StoreOffer, "id" | "createdAt">, id?: string): Promise<string | null> => {
+    setBusy(true);
+    try {
+      const response = await fetch(`${API}/admin/offers${id ? `/${id}` : ""}`, {
+        method: id ? "PUT" : "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(offer),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not save this offer.");
+      setOffers((current) => id
+        ? current.map((item) => item.id === id ? result.offer : item)
+        : [result.offer, ...current]);
+      setAddingOffer(false);
+      setEditingOffer(null);
+      notify(id ? "Offer updated" : "Offer published");
+      return null;
+    } catch (reason) {
+      return reason instanceof Error ? reason.message : "Could not save this offer.";
+    } finally { setBusy(false); }
+  };
+  const removeOffer = async (offer: StoreOffer) => {
+    if (!window.confirm(`Delete the offer “${offer.title}”?`)) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`${API}/admin/offers/${offer.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("Could not delete this offer.");
+      setOffers((current) => current.filter((item) => item.id !== offer.id));
+      notify("Offer removed");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not delete this offer."); }
+    finally { setBusy(false); }
+  };
   return (
     <div className={fullPage ? "admin-page" : "modal-backdrop"}>
       <section className={`admin-panel ${fullPage ? "admin-fullpage" : ""}`}>
@@ -943,18 +1079,25 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
           </form>
         ) : adding || editing ? (
           <ProductForm initial={editing} onCancel={() => { setAdding(false); setEditing(null); }} onSave={save} />
+        ) : addingOffer || editingOffer ? (
+          <OfferForm initial={editingOffer} onCancel={() => { setAddingOffer(false); setEditingOffer(null); }} onSave={(offer) => saveOffer(offer, editingOffer?.id)} />
         ) : (
           <div className="admin-content">
             <div className="admin-tabs">
               <button className={view === "products" ? "active" : ""} onClick={() => setView("products")} type="button">Products</button>
               <button className={view === "orders" ? "active" : ""} onClick={loadOrders} type="button">Orders</button>
               <button className={view === "newsletter" ? "active" : ""} onClick={loadSubscribers} type="button">Newsletter</button>
+              <button className={view === "offers" ? "active" : ""} onClick={loadOffers} type="button">Offers</button>
+              <button className={view === "finance" ? "active" : ""} onClick={loadFinance} type="button">Finance</button>
             </div>
-            <div className="admin-top"><div><p className="eyebrow">Store management</p><h2>{view === "products" ? "Products" : view === "orders" ? "Customer orders" : "Newsletter subscribers"}</h2><p>{view === "products" ? `${products.length} active listings` : view === "orders" ? `${orders.length} orders received` : `${subscribers.length} subscribers`}</p></div><div className="admin-actions">{view === "products" && <button className="primary-button" onClick={() => setAdding(true)} type="button"><Icon name="plus" /> Add product</button>}<button className="secondary-button" onClick={signOut} type="button">Sign out</button></div></div>
+            <div className="admin-top"><div><p className="eyebrow">Store management</p><h2>{view === "products" ? "Products" : view === "orders" ? "Customer orders" : view === "newsletter" ? "Newsletter subscribers" : view === "offers" ? "Offers and campaigns" : "Finance overview"}</h2><p>{view === "products" ? `${products.length} active listings` : view === "orders" ? `${orders.length} orders received` : view === "newsletter" ? `${subscribers.length} subscribers` : view === "offers" ? `${offers.length} campaigns` : "Sales performance from submitted orders"}</p></div><div className="admin-actions">{view === "products" && <button className="primary-button" onClick={() => setAdding(true)} type="button"><Icon name="plus" /> Add product</button>}{view === "offers" && <button className="primary-button" onClick={() => setAddingOffer(true)} type="button"><Icon name="plus" /> Create offer</button>}<button className="secondary-button" onClick={signOut} type="button">Sign out</button></div></div>
             {error && <p className="error">{error}</p>}
             {busy && <p className="admin-feedback" role="status">Working...</p>}
             {view === "products" ? <div className="admin-list">
               {products.map((product) => <div className="admin-row" key={product.id}><img alt="" src={product.image} /><div className="flex-1"><strong>{product.name}</strong><span>{product.category} · {money(product.price)}</span></div><button aria-label="Edit" onClick={() => setEditing(product)} type="button"><Icon name="edit" /></button><button aria-label="Delete" onClick={() => remove(product)} type="button"><Icon name="trash" /></button></div>)}
+            </div> : view === "finance" ? <FinanceDashboard orders={orders} /> : view === "offers" ? <div className="offer-admin-list">
+              {!offers.length && <p className="py-12 text-center text-sm text-stone-500">No offers yet. Create a campaign to feature it on the storefront.</p>}
+              {offers.map((offer) => <article className="offer-admin-row" key={offer.id}><div className="offer-admin-copy"><div className="offer-admin-title"><strong>{offer.title}</strong><span className={`offer-state offer-state--${offerState(offer)}`}>{offerState(offer)}</span></div><p>{offer.description}</p><span>{offer.discountLabel || "Promotion"}{offer.promoCode ? ` · Code ${offer.promoCode}` : ""}</span><span>{offer.startsAt ? `Starts ${new Date(offer.startsAt).toLocaleString("en-KE")}` : "Starts now"}{offer.endsAt ? ` · Ends ${new Date(offer.endsAt).toLocaleString("en-KE")}` : " · No end date"}</span></div><div className="offer-admin-actions"><button className="secondary-button" onClick={() => setEditingOffer(offer)} type="button">Edit</button><button aria-label={`Delete ${offer.title}`} onClick={() => removeOffer(offer)} type="button"><Icon name="trash" /></button></div></article>)}
             </div> : <div className="order-list">
               {view === "orders" && !orders.length && <p className="py-12 text-center text-sm text-stone-500">No orders yet.</p>}
               {view === "orders" && orders.map((order) => <article className="order-row" key={order.id}><div><strong>{order.name}</strong><p>{order.phone} · {order.location}</p>{order.customerEmail && <p>{order.customerEmail}</p>}<p>{order.items.map((item) => `${item.quantity}× ${item.name} (${item.size})`).join(", ")}</p>{order.note && <p>Note: {order.note}</p>}<label className="status-control">Status<select aria-label={`Status for order ${order.id}`} disabled={busy} onChange={(event) => updateOrderStatus(order, event.target.value)} value={order.status}>{["new", "confirmed", "packed", "dispatched", "delivered", "cancelled"].map((status) => <option key={status} value={status}>{status}</option>)}</select></label></div><div><strong>{money(order.total)}</strong><span>{new Date(order.createdAt).toLocaleDateString("en-KE")}</span><a href={`https://wa.me/254${order.phone.replace(/\D/g, "").replace(/^0/, "")}`} rel="noreferrer" target="_blank">Message customer</a></div></article>)}
@@ -968,9 +1111,86 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
   );
 }
 
-function ProductForm({ initial, onCancel, onSave }: { initial: Product | null; onCancel: () => void; onSave: (product: Product, imageFile: File | null) => Promise<string | null> }) {
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState(initial?.image || "");
+function localDateTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function FinanceDashboard({ orders }: { orders: Order[] }) {
+  const [period, setPeriod] = useState<"7d" | "30d" | "90d" | "all">("30d");
+  const now = Date.now();
+  const periodDays = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : null;
+  const earliestOrder = orders.reduce((earliest, order) => {
+    const timestamp = new Date(order.createdAt).getTime();
+    return Number.isFinite(timestamp) && timestamp < earliest ? timestamp : earliest;
+  }, now);
+  const rangeStart = periodDays === null
+    ? (orders.length ? earliestOrder : now - 30 * 24 * 60 * 60 * 1000)
+    : now - periodDays * 24 * 60 * 60 * 1000;
+  const filteredOrders = orders.filter((order) => {
+    const timestamp = new Date(order.createdAt).getTime();
+    return Number.isFinite(timestamp) && timestamp >= rangeStart && timestamp <= now;
+  });
+  const validOrders = filteredOrders.filter((order) => order.status !== "cancelled");
+  const orderValue = validOrders.reduce((sum, order) => sum + order.total, 0);
+  const deliveredValue = validOrders.filter((order) => order.status === "delivered").reduce((sum, order) => sum + order.total, 0);
+  const openValue = validOrders.filter((order) => ["new", "confirmed", "packed", "dispatched"].includes(order.status)).reduce((sum, order) => sum + order.total, 0);
+  const averageValue = validOrders.length ? orderValue / validOrders.length : 0;
+  const bucketCount = period === "7d" ? 7 : period === "30d" ? 10 : 12;
+  const interval = Math.max(1, (now - rangeStart) / bucketCount);
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const start = rangeStart + interval * index;
+    const end = index === bucketCount - 1 ? now + 1 : rangeStart + interval * (index + 1);
+    const date = new Date(start);
+    const label = period === "7d"
+      ? date.toLocaleDateString("en-KE", { weekday: "short" })
+      : period === "all"
+        ? date.toLocaleDateString("en-KE", { month: "short", year: "2-digit" })
+        : date.toLocaleDateString("en-KE", { day: "numeric", month: "short" });
+    const value = validOrders.filter((order) => {
+      const timestamp = new Date(order.createdAt).getTime();
+      return timestamp >= start && timestamp < end;
+    }).reduce((sum, order) => sum + order.total, 0);
+    return { label, value };
+  });
+  const maxBucket = Math.max(1, ...buckets.map((bucket) => bucket.value));
+  const productTotals = new Map<string, { name: string; quantity: number; value: number }>();
+  validOrders.forEach((order) => order.items.forEach((item) => {
+    const previous = productTotals.get(item.id) || { name: item.name, quantity: 0, value: 0 };
+    previous.quantity += item.quantity;
+    previous.value += item.price * item.quantity;
+    productTotals.set(item.id, previous);
+  }));
+  const bestSellers = [...productTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5);
+  const periodLabel = period === "all" ? "All time" : `Last ${period.slice(0, -1)} days`;
+
+  return (
+    <div className="finance-dashboard">
+      <div className="finance-toolbar"><p>Order totals · {periodLabel}</p><div aria-label="Finance date range" className="finance-periods">{([["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"], ["all", "All time"]] as const).map(([value, label]) => <button aria-pressed={period === value} className={period === value ? "active" : ""} key={value} onClick={() => setPeriod(value)} type="button">{label}</button>)}</div></div>
+      <div className="finance-cards">
+        <article><span>Order value</span><strong>{money(orderValue)}</strong><small>{validOrders.length} non-cancelled orders</small></article>
+        <article><span>Delivered order value</span><strong>{money(deliveredValue)}</strong><small>Marked delivered by admin</small></article>
+        <article><span>Open order value</span><strong>{money(openValue)}</strong><small>New through dispatched</small></article>
+        <article><span>Average order value</span><strong>{money(averageValue)}</strong><small>Per non-cancelled order</small></article>
+      </div>
+      <section className="finance-chart-card">
+        <div><h3>Order value trend</h3><p>Submitted order totals grouped across {periodLabel.toLowerCase()}.</p></div>
+        <div aria-label="Order value bar chart" className="finance-chart" role="img">
+          {buckets.map((bucket, index) => <div className="finance-bar-column" key={`${bucket.label}-${index}`} title={`${bucket.label}: ${money(bucket.value)}`}><span className="finance-bar-value">{bucket.value ? money(bucket.value) : ""}</span><div className="finance-bar-track"><span style={{ height: `${bucket.value ? Math.max(5, bucket.value / maxBucket * 100) : 0}%` }} /></div><small>{bucket.label}</small></div>)}
+        </div>
+      </section>
+      <section className="finance-products-card">
+        <div><h3>Best-selling products</h3><p>Ranked by units ordered, excluding cancelled orders.</p></div>
+        {bestSellers.length ? <div className="finance-product-list">{bestSellers.map((product) => <div key={product.name}><strong>{product.name}</strong><span>{product.quantity} sold</span><b>{money(product.value)}</b></div>)}</div> : <p className="finance-empty">No order items in this period.</p>}
+      </section>
+      <p className="finance-disclaimer">These figures use submitted order totals. They do not confirm payment collection and do not subtract product, delivery, or operating costs, so they are not profit figures.</p>
+    </div>
+  );
+}
+
+function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; onCancel: () => void; onSave: (offer: Omit<StoreOffer, "id" | "createdAt">) => Promise<string | null> }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -978,16 +1198,78 @@ function ProductForm({ initial, onCancel, onSave }: { initial: Product | null; o
     setSaving(true);
     setError("");
     const data = new FormData(event.currentTarget);
+    const startsAtValue = String(data.get("startsAt") || "");
+    const endsAtValue = String(data.get("endsAt") || "");
+    const startsAt = startsAtValue ? new Date(startsAtValue) : null;
+    const endsAt = endsAtValue ? new Date(endsAtValue) : null;
+    if ((startsAt && !Number.isFinite(startsAt.getTime())) || (endsAt && !Number.isFinite(endsAt.getTime()))) {
+      setError("Enter a valid start and end date.");
+      setSaving(false);
+      return;
+    }
+    if (startsAt && endsAt && endsAt <= startsAt) {
+      setError("The end date must be after the start date.");
+      setSaving(false);
+      return;
+    }
+    const message = await onSave({
+      title: String(data.get("title")).trim(),
+      description: String(data.get("description")).trim(),
+      discountLabel: String(data.get("discountLabel") || "").trim(),
+      promoCode: String(data.get("promoCode") || "").trim(),
+      startsAt: startsAt?.toISOString() || "",
+      endsAt: endsAt?.toISOString() || "",
+      active: data.get("active") === "on",
+    });
+    if (message) setError(message);
+    setSaving(false);
+  };
+  return (
+    <form className="product-form offer-form" onSubmit={submit}>
+      <button className="text-left text-xs uppercase tracking-widest text-stone-500" onClick={onCancel} type="button">← Back to offers</button>
+      <div><p className="eyebrow">Store campaign</p><h2>{initial ? "Edit offer" : "Create an offer"}</h2><p className="offer-form-intro">Live offers appear in a banner above the storefront.</p></div>
+      <div className="form-grid">
+        <label className="sm:col-span-2">Headline<input defaultValue={initial?.title} maxLength={90} name="title" placeholder="Flash sale: 20% off this weekend" required /></label>
+        <label className="sm:col-span-2">Message<textarea defaultValue={initial?.description} maxLength={300} name="description" placeholder="Tell customers what the offer includes." required rows={3} /></label>
+        <label>Offer label<input defaultValue={initial?.discountLabel} maxLength={60} name="discountLabel" placeholder="20% OFF · FLASH SALE" /></label>
+        <label>Promo code<input defaultValue={initial?.promoCode} maxLength={40} name="promoCode" placeholder="CELLY20" /></label>
+        <label>Starts at<input defaultValue={localDateTime(initial?.startsAt)} name="startsAt" type="datetime-local" /></label>
+        <label>Ends at<input defaultValue={localDateTime(initial?.endsAt)} name="endsAt" type="datetime-local" /></label>
+        <label className="checkbox sm:col-span-2"><input defaultChecked={initial?.active ?? true} name="active" type="checkbox" /> Publish this offer</label>
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      <button className="primary-button" disabled={saving} type="submit">{saving ? "Saving offer..." : initial ? "Save changes" : "Publish offer"} <Icon name="arrow" /></button>
+    </form>
+  );
+}
+
+function ProductForm({ initial, onCancel, onSave }: { initial: Product | null; onCancel: () => void; onSave: (product: Product, imageFiles: File[]) => Promise<string | null> }) {
+  const [existingImages, setExistingImages] = useState<string[]>(initial ? productImageList(initial) : []);
+  const [selectedImages, setSelectedImages] = useState<{ file: File; preview: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => () => selectedImages.forEach(({ preview }) => URL.revokeObjectURL(preview)), [selectedImages]);
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    if (existingImages.length + selectedImages.length < 2) {
+      setError("Add at least two images for this product.");
+      setSaving(false);
+      return;
+    }
+    const data = new FormData(event.currentTarget);
     const message = await onSave({
       id: initial?.id || crypto.randomUUID(),
       name: String(data.get("name")),
       category: String(data.get("category")) as Category,
       price: Number(data.get("price")),
-      image: initial?.image || "",
+      image: existingImages[0] || "",
+      images: existingImages,
       description: String(data.get("description")),
       sizes: String(data.get("sizes")).split(",").map((s) => s.trim()).filter(Boolean),
       featured: data.get("featured") === "on",
-    }, imageFile);
+    }, selectedImages.map(({ file }) => file));
     if (message) setError(message);
     setSaving(false);
   };
@@ -1000,8 +1282,11 @@ function ProductForm({ initial, onCancel, onSave }: { initial: Product | null; o
         <label>Category<select defaultValue={initial?.category || "Dresses"} name="category">{categories.slice(1).map((c) => <option key={c}>{c}</option>)}</select></label>
         <label>Price (KSh)<input defaultValue={initial?.price} min="0" name="price" required type="number" /></label>
         <label>Sizes, separated by commas<input defaultValue={initial?.sizes.join(", ")} name="sizes" placeholder="S, M, L, XL" required /></label>
-        <label className="sm:col-span-2">Product image<input accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] || null; setImageFile(file); setPreview(file ? URL.createObjectURL(file) : initial?.image || ""); }} required={!initial?.image} type="file" /> <span className="upload-help">JPG, PNG, or WebP · up to 5 MB</span></label>
-        {preview && <div className="product-image-preview sm:col-span-2"><img alt="Product preview" src={preview} /></div>}
+        <label className="sm:col-span-2">Product images<input accept="image/jpeg,image/png,image/webp" disabled={existingImages.length + selectedImages.length >= 8} multiple onChange={(event) => { const files = Array.from(event.target.files || []).slice(0, Math.max(0, 8 - existingImages.length - selectedImages.length)); setSelectedImages((current) => [...current, ...files.map((file) => ({ file, preview: URL.createObjectURL(file) }))]); event.target.value = ""; }} required={existingImages.length + selectedImages.length < 2} type="file" /><span className="upload-help">Add at least 2 images, up to 8 total. JPG, PNG, or WebP · max 5 MB each. {existingImages.length + selectedImages.length}/8 selected</span></label>
+        {(existingImages.length > 0 || selectedImages.length > 0) && <div className="product-image-preview sm:col-span-2">
+          {existingImages.map((image, index) => <div className="product-image-tile" key={`${image}-${index}`}><img alt={`Product photo ${index + 1}`} src={image} /><button aria-label={`Remove product photo ${index + 1}`} onClick={() => setExistingImages((current) => current.filter((_, imageIndex) => imageIndex !== index))} type="button">×</button></div>)}
+          {selectedImages.map(({ preview }, index) => <div className="product-image-tile" key={preview}><img alt={`New product photo ${existingImages.length + index + 1}`} src={preview} /><button aria-label={`Remove new product photo ${existingImages.length + index + 1}`} onClick={() => setSelectedImages((current) => current.filter((_, selectedIndex) => selectedIndex !== index))} type="button">×</button></div>)}
+        </div>}
         <label className="sm:col-span-2">Description<textarea defaultValue={initial?.description} name="description" required rows={3} /></label>
         <label className="checkbox sm:col-span-2"><input defaultChecked={initial?.featured} name="featured" type="checkbox" /> Show bestseller badge</label>
       </div>

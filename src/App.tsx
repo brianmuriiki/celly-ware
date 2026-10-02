@@ -963,7 +963,12 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
     setBusy(true); setError("");
     try {
       const response = await fetch(`${API}/admin/offers`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error(response.status === 403 ? "This account needs the admin role in Supabase." : "Could not load offers.");
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        if (response.status === 403) throw new Error("This account needs the admin role in Supabase.");
+        if (response.status === 404) throw new Error("Offers API is missing from the deployed Supabase function. Deploy make-server-f5814922 again.");
+        throw new Error(result.error || `Could not load offers (HTTP ${response.status}).`);
+      }
       const data = await response.json();
       setOffers(data.offers || []);
       setView("offers");
@@ -1310,7 +1315,20 @@ function ProductForm({ initial, onCancel, onSave }: { initial: Product | null; o
         <label>Category<select defaultValue={initial?.category || "Dresses"} name="category">{categories.slice(1).map((c) => <option key={c}>{c}</option>)}</select></label>
         <label>Price (KSh)<input defaultValue={initial?.price} min="0" name="price" required type="number" /></label>
         <label>Sizes, separated by commas<input defaultValue={initial?.sizes.join(", ")} name="sizes" placeholder="S, M, L, XL" required /></label>
-        <label className="sm:col-span-2">Product images<input accept="image/jpeg,image/png,image/webp" disabled={existingImages.length + selectedImages.length >= 8} multiple onChange={(event) => { const files = Array.from(event.target.files || []).slice(0, Math.max(0, 8 - existingImages.length - selectedImages.length)); setSelectedImages((current) => [...current, ...files.map((file) => ({ file, preview: URL.createObjectURL(file) }))]); event.target.value = ""; }} required={existingImages.length + selectedImages.length < 2} type="file" /><span className="upload-help">Add at least 2 images, up to 8 total. JPG, PNG, or WebP · max 5 MB each. {existingImages.length + selectedImages.length}/8 selected</span></label>
+        <label className="sm:col-span-2">Product images<input accept="image/jpeg,image/png,image/webp" disabled={existingImages.length + selectedImages.length >= 8} multiple onChange={(event) => {
+          const files = Array.from(event.target.files || []);
+          const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+          const invalidFile = files.find((file) => !allowedTypes.has(file.type));
+          const oversizedFile = files.find((file) => file.size > 5 * 1024 * 1024);
+          if (invalidFile) setError(`${invalidFile.name} is not JPG, PNG, or WebP. Convert it to one of those formats and try again.`);
+          else if (oversizedFile) setError(`${oversizedFile.name} is larger than 5 MB. Choose a smaller image.`);
+          else {
+            setError("");
+            const remaining = Math.max(0, 8 - existingImages.length - selectedImages.length);
+            setSelectedImages((current) => [...current, ...files.slice(0, remaining).map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+          }
+          event.target.value = "";
+        }} type="file" /><span className="upload-help">Add at least 2 images, up to 8 total. JPG, PNG, or WebP · max 5 MB each. {existingImages.length + selectedImages.length}/8 selected</span></label>
         {(existingImages.length > 0 || selectedImages.length > 0) && <div className="product-image-preview sm:col-span-2">
           {existingImages.map((image, index) => <div className="product-image-tile" key={`${image}-${index}`}><img alt={`Product photo ${index + 1}`} src={image} /><button aria-label={`Remove product photo ${index + 1}`} onClick={() => setExistingImages((current) => current.filter((_, imageIndex) => imageIndex !== index))} type="button">×</button></div>)}
           {selectedImages.map(({ preview }, index) => <div className="product-image-tile" key={preview}><img alt={`New product photo ${existingImages.length + index + 1}`} src={preview} /><button aria-label={`Remove new product photo ${existingImages.length + index + 1}`} onClick={() => setSelectedImages((current) => current.filter((_, selectedIndex) => selectedIndex !== index))} type="button">×</button></div>)}

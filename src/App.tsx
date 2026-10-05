@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { projectId, publicAnonKey } from "../utils/supabase/info";
 
 const productCategories = [
@@ -79,6 +79,59 @@ type IconName =
 
 const categories = ["All", ...productCategories] as const;
 const API = `https://${projectId}.supabase.co/functions/v1/make-server-f5814922`;
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000;
+const LAST_ACTIVITY_KEY = "celly-last-activity";
+const markSessionActivity = () => localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+
+function useIdleLogout(enabled: boolean, onTimeout: () => void) {
+  const onTimeoutRef = useRef(onTimeout);
+  onTimeoutRef.current = onTimeout;
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    let timer = 0;
+    let lastSavedAt = 0;
+    const readLastActivity = () => Number(localStorage.getItem(LAST_ACTIVITY_KEY) || 0);
+    const endSession = () => onTimeoutRef.current();
+    const armTimer = (lastActivity: number) => {
+      window.clearTimeout(timer);
+      const remaining = IDLE_TIMEOUT_MS - (Date.now() - lastActivity);
+      if (remaining <= 0) endSession();
+      else timer = window.setTimeout(endSession, remaining);
+    };
+    const initialActivity = readLastActivity();
+    if (initialActivity && Date.now() - initialActivity >= IDLE_TIMEOUT_MS) {
+      endSession();
+      return;
+    }
+    if (!initialActivity) localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+    armTimer(initialActivity || Date.now());
+
+    const recordActivity = () => {
+      const now = Date.now();
+      armTimer(now);
+      if (now - lastSavedAt >= 5000) {
+        lastSavedAt = now;
+        localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+      }
+    };
+    const syncActivity = (event: StorageEvent) => {
+      if (event.key !== LAST_ACTIVITY_KEY) return;
+      if (!event.newValue) endSession();
+      else armTimer(Number(event.newValue));
+    };
+    const events: (keyof WindowEventMap)[] = ["pointerdown", "keydown", "scroll", "touchstart"];
+    events.forEach((name) => window.addEventListener(name, recordActivity, { passive: true }));
+    window.addEventListener("storage", syncActivity);
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((name) => window.removeEventListener(name, recordActivity));
+      window.removeEventListener("storage", syncActivity);
+    };
+  }, [enabled]);
+}
+
 type CookieConsent = "accepted" | "declined" | null;
 function readCookieConsent(): CookieConsent {
   const consent = document.cookie.split("; ").find((entry) => entry.startsWith("celly-cookie-consent="))?.split("=")[1];
@@ -216,6 +269,13 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
+  useIdleLogout(Boolean(customer), () => {
+    localStorage.removeItem("celly-customer");
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    setCustomer(null);
+    setAccountMessage("You were signed out after one hour of inactivity.");
+  });
+
   useEffect(() => {
     fetch(`${API}/products`, { headers: { Authorization: `Bearer ${publicAnonKey}` } })
       .then((response) => (response.ok ? response.json() : Promise.reject()))
@@ -332,6 +392,7 @@ function App() {
           sessionStorage.setItem("celly-admin-token", accessToken);
           if (refreshToken) sessionStorage.setItem("celly-admin-refresh-token", refreshToken);
           sessionStorage.setItem("celly-admin-expires-at", String(Date.now() + expiresIn * 1000));
+          markSessionActivity();
           window.location.replace("/admin");
           return;
         }
@@ -343,6 +404,7 @@ function App() {
           refreshToken,
           expiresAt: Date.now() + expiresIn * 1000,
         });
+        markSessionActivity();
         setAccountMessage("");
         notify("Welcome to Celly-Ware");
       })
@@ -891,6 +953,7 @@ function AccountModal({ customer, isAdmin, onCustomerChange, onClose, notify, au
         refreshToken: result.refresh_token,
         expiresAt: Date.now() + (result.expires_in || 3600) * 1000,
       });
+      markSessionActivity();
       notify(mode === "signup" ? "Your account is ready" : "Welcome back");
       onClose();
     } catch (reason) {
@@ -911,7 +974,7 @@ function AccountModal({ customer, isAdmin, onCustomerChange, onClose, notify, au
           <p className="account-email">{customer.email}</p>
           <p className="account-note"><Icon name="check" size={17} /> You’re signed in and ready to order.</p>
           {isAdmin && <button className="primary-button w-full" onClick={() => { window.location.assign("/admin"); }} type="button">Admin portal <Icon name="arrow" /></button>}
-          <button className="secondary-button w-full" onClick={() => { onCustomerChange(null); notify("You have signed out"); onClose(); }} type="button">Sign out</button>
+          <button className="secondary-button w-full" onClick={() => { onCustomerChange(null); localStorage.removeItem(LAST_ACTIVITY_KEY); notify("You have signed out"); onClose(); }} type="button">Sign out</button>
         </section>
       </div>
     );
@@ -963,6 +1026,18 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
   const [offers, setOffers] = useState<StoreOffer[]>([]);
   const [addingOffer, setAddingOffer] = useState(false);
   const [editingOffer, setEditingOffer] = useState<StoreOffer | null>(null);
+  useIdleLogout(Boolean(token), () => {
+    sessionStorage.removeItem("celly-admin-token");
+    sessionStorage.removeItem("celly-admin-refresh-token");
+    sessionStorage.removeItem("celly-admin-expires-at");
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    setToken("");
+    setOrders([]);
+    setSubscribers([]);
+    setOffers([]);
+    setView("products");
+    setError("You were signed out after one hour of inactivity.");
+  });
   useEffect(() => {
     if (!token) return;
     let refreshing = false;
@@ -1076,6 +1151,7 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
     sessionStorage.removeItem("celly-admin-token");
     sessionStorage.removeItem("celly-admin-refresh-token");
     sessionStorage.removeItem("celly-admin-expires-at");
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
     setToken("");
     setOrders([]);
     setSubscribers([]);
@@ -1101,6 +1177,7 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
       sessionStorage.setItem("celly-admin-token", result.access_token);
       sessionStorage.setItem("celly-admin-refresh-token", result.refresh_token);
       sessionStorage.setItem("celly-admin-expires-at", String(Date.now() + (result.expires_in || 3600) * 1000));
+      markSessionActivity();
       setToken(result.access_token);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign in."); }
     finally { setBusy(false); }

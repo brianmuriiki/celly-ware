@@ -56,6 +56,8 @@ type Customer = {
   email: string;
   name?: string;
   accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
 };
 type IconName =
   | "arrow"
@@ -77,6 +79,24 @@ type IconName =
 
 const categories = ["All", ...productCategories] as const;
 const API = `https://${projectId}.supabase.co/functions/v1/make-server-f5814922`;
+type CookieConsent = "accepted" | "declined" | null;
+function readCookieConsent(): CookieConsent {
+  const consent = document.cookie.split("; ").find((entry) => entry.startsWith("celly-cookie-consent="))?.split("=")[1];
+  return consent === "accepted" || consent === "declined" ? consent : null;
+}
+function saveCookieConsent(consent: Exclude<CookieConsent, null>) {
+  document.cookie = `celly-cookie-consent=${consent}; max-age=${60 * 60 * 24 * 180}; path=/; SameSite=Lax`;
+}
+async function refreshAuthSession(refreshToken: string) {
+  const response = await fetch(`https://${projectId}.supabase.co/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: { apikey: publicAnonKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.msg || result.error_description || "Your session has expired. Please sign in again.");
+  return result;
+}
 const money = (amount: number) => `KSh ${amount.toLocaleString("en-KE")}`;
 const productImageList = (product: Product) => {
   const images = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
@@ -178,25 +198,21 @@ function ProductCard({
 }
 
 function App() {
+  const [cookieConsent, setCookieConsent] = useState<CookieConsent>(readCookieConsent);
   const [products, setProducts] = useState<Product[]>([]);
   const [category, setCategory] = useState<(typeof categories)[number]>("All");
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedOnly, setSavedOnly] = useState(false);
-  const [savedIds, setSavedIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("celly-saved") || "[]"); } catch { return []; }
-  });
+  const [savedIds, setSavedIds] = useState<string[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [selected, setSelected] = useState<Product | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
   const [ordersRefresh, setOrdersRefresh] = useState(0);
-  const [customer, setCustomer] = useState<Customer | null>(() => {
-    const saved = localStorage.getItem("celly-customer");
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
@@ -207,23 +223,69 @@ function App() {
       .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    const saved = localStorage.getItem("celly-cart");
-    if (saved) setCart(JSON.parse(saved));
-  }, []);
+  const chooseCookieConsent = (consent: Exclude<CookieConsent, null>) => {
+    saveCookieConsent(consent);
+    setCookieConsent(consent);
+    if (consent === "accepted") {
+      try { setCart(JSON.parse(localStorage.getItem("celly-cart") || "[]")); } catch { setCart([]); }
+      try { setSavedIds(JSON.parse(localStorage.getItem("celly-saved") || "[]")); } catch { setSavedIds([]); }
+      if (!customer) {
+        try {
+          const saved = localStorage.getItem("celly-customer");
+          setCustomer(saved ? JSON.parse(saved) : null);
+        } catch { setCustomer(null); }
+      }
+    } else {
+      localStorage.removeItem("celly-cart");
+      localStorage.removeItem("celly-saved");
+      localStorage.removeItem("celly-customer");
+      setCart([]);
+      setSavedIds([]);
+      setCustomer(null);
+    }
+  };
 
   useEffect(() => {
-    localStorage.setItem("celly-cart", JSON.stringify(cart));
-  }, [cart]);
+    if (cookieConsent === "accepted") localStorage.setItem("celly-cart", JSON.stringify(cart));
+  }, [cart, cookieConsent]);
 
   useEffect(() => {
-    localStorage.setItem("celly-saved", JSON.stringify(savedIds));
-  }, [savedIds]);
+    if (cookieConsent === "accepted") localStorage.setItem("celly-saved", JSON.stringify(savedIds));
+  }, [savedIds, cookieConsent]);
 
   useEffect(() => {
+    if (cookieConsent !== "accepted") return;
     if (customer) localStorage.setItem("celly-customer", JSON.stringify(customer));
     else localStorage.removeItem("celly-customer");
-  }, [customer]);
+  }, [customer, cookieConsent]);
+
+  useEffect(() => {
+    if (!customer?.refreshToken) return;
+    let refreshing = false;
+    const refreshIfNeeded = async () => {
+      if (refreshing || !customer.expiresAt || customer.expiresAt - Date.now() > 5 * 60 * 1000) return;
+      refreshing = true;
+      try {
+        const session = await refreshAuthSession(customer.refreshToken!);
+        setCustomer((current) => current?.id === customer.id ? {
+          ...current,
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token || current.refreshToken,
+          expiresAt: Date.now() + (session.expires_in || 3600) * 1000,
+        } : current);
+      } catch {
+        setCustomer((current) => current?.id === customer.id ? null : current);
+        setAccountMessage("Your session expired. Please sign in again.");
+      } finally {
+        refreshing = false;
+      }
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") void refreshIfNeeded(); };
+    const timer = window.setInterval(refreshIfNeeded, 60_000);
+    document.addEventListener("visibilitychange", onVisible);
+    void refreshIfNeeded();
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, [customer?.id, customer?.refreshToken, customer?.expiresAt]);
 
   useEffect(() => {
     let active = true;
@@ -246,6 +308,8 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.slice(1));
     const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token") || undefined;
+    const expiresIn = Number(params.get("expires_in") || 3600);
     const authError = params.get("error_description") || params.get("error");
     if (!accessToken && !authError) return;
 
@@ -266,6 +330,8 @@ function App() {
         // the OAuth access token for the protected admin page and open it directly.
         if (user.app_metadata?.role === "admin") {
           sessionStorage.setItem("celly-admin-token", accessToken);
+          if (refreshToken) sessionStorage.setItem("celly-admin-refresh-token", refreshToken);
+          sessionStorage.setItem("celly-admin-expires-at", String(Date.now() + expiresIn * 1000));
           window.location.replace("/admin");
           return;
         }
@@ -274,6 +340,8 @@ function App() {
           email: user.email,
           name: user.user_metadata?.full_name || user.user_metadata?.name,
           accessToken,
+          refreshToken,
+          expiresAt: Date.now() + expiresIn * 1000,
         });
         setAccountMessage("");
         notify("Welcome to Celly-Ware");
@@ -348,6 +416,7 @@ function App() {
               <Icon name="menu" />
             </button>
             <div className="hidden items-center gap-7 text-xs font-semibold uppercase tracking-widest lg:flex">
+              <a href="#hot-deals">Hot deals</a>
               <a href="#shop">Shop</a>
               <a href="#story">Our story</a>
               <a href="#track">Track order</a>
@@ -368,7 +437,7 @@ function App() {
             </button>
           </div>
         </nav>
-        {menuOpen && <nav aria-label="Mobile navigation" className="flex flex-col gap-4 border-t border-stone-200 px-5 py-4 text-xs font-semibold uppercase tracking-widest lg:hidden" onClick={() => setMenuOpen(false)}><a href="#shop">Shop</a><a href="#track">Track order</a><a href="#story">Our story</a><a href="#contact">Contact</a><a href="#newsletter">Newsletter</a></nav>}
+        {menuOpen && <nav aria-label="Mobile navigation" className="flex flex-col gap-4 border-t border-stone-200 px-5 py-4 text-xs font-semibold uppercase tracking-widest lg:hidden" onClick={() => setMenuOpen(false)}><a href="#hot-deals">Hot deals</a><a href="#shop">Shop</a><a href="#track">Track order</a><a href="#story">Our story</a><a href="#contact">Contact</a><a href="#newsletter">Newsletter</a></nav>}
         {searchOpen && (
           <div className="mx-auto flex max-w-2xl items-center gap-3 border-t border-stone-200 px-5 py-4">
             <Icon name="search" className="text-stone-400" />
@@ -385,7 +454,6 @@ function App() {
       </header>
 
       <main>
-        <OffersBanner />
         <section className="hero">
           <img alt="Woman wearing a red floral dress from the new collection" src="https://images.unsplash.com/photo-1625646741211-711bdd65c570?auto=format&fit=crop&w=1600&q=85" />
           <div className="hero-overlay" />
@@ -404,6 +472,8 @@ function App() {
             <p>Curated with love<br />in Kenya</p>
           </div>
         </section>
+
+        <OffersBanner />
 
         <section className="mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-28" id="shop">
           <div className="mb-10 flex flex-col justify-between gap-6 md:flex-row md:items-end">
@@ -542,6 +612,16 @@ function App() {
           onCustomerChange={setCustomer}
         />
       )}
+      {cookieConsent === null && <section aria-label="Cookie preferences" className="fixed inset-x-4 bottom-4 z-[80] mx-auto max-w-3xl border border-stone-300 bg-[#fbfaf7] p-5 shadow-2xl sm:flex sm:items-center sm:justify-between sm:gap-8 sm:p-6" role="dialog" aria-modal="false" aria-labelledby="cookie-consent-title">
+        <div>
+          <h2 className="font-serif text-xl" id="cookie-consent-title">Your cookie choice</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">We use cookies and similar storage to remember your sign-in, bag, and saved items between visits. Accept to save these details on this device, or decline to use the site without saving them.</p>
+        </div>
+        <div className="mt-4 flex shrink-0 gap-3 sm:mt-0">
+          <button className="secondary-button" onClick={() => chooseCookieConsent("declined")} type="button">Decline</button>
+          <button className="primary-button" onClick={() => chooseCookieConsent("accepted")} type="button">Accept</button>
+        </div>
+      </section>}
       {toast && <div className={`toast toast--${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><Icon name={toast.tone === "success" ? "check" : "close"} size={18} />{toast.message}</div>}
     </div>
   );
@@ -597,22 +677,30 @@ function OffersBanner() {
 
   if (!offers.length) return null;
   return (
-    <section aria-label="Current offers" className="offers-strip">
-      {offers.map((offer) => (
-        <article className="offer-banner" key={offer.id}>
-          {offer.image && <img alt="" className="offer-banner-image" src={offer.image} />}
-          <div className="offer-banner-copy">
-            {offer.discountLabel && <span className="offer-kicker">{offer.discountLabel}</span>}
-            <h2>{offer.title}</h2>
-            <p>{offer.description}</p>
-          </div>
-          <div className="offer-banner-action">
-            {offer.promoCode && <span>Use code <strong>{offer.promoCode}</strong></span>}
-            {offer.endsAt && <span>Ends {new Date(offer.endsAt).toLocaleDateString("en-KE", { dateStyle: "medium" })}</span>}
-            <a href="#shop">Shop now <Icon name="arrow" size={16} /></a>
-          </div>
-        </article>
-      ))}
+    <section aria-labelledby="hot-deals-heading" className="hot-deals" id="hot-deals">
+      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div><p className="eyebrow">Limited time</p><h2 className="section-title" id="hot-deals-heading">Hot deals</h2></div>
+          <span className="hot-deals-live">Live now</span>
+        </div>
+        <div className="hot-deals-grid">
+          {offers.map((offer) => (
+            <article className="hot-deal-card" key={offer.id}>
+              {offer.image && <img alt="" className="hot-deal-image" src={offer.image} />}
+              <div className="hot-deal-copy">
+                {offer.discountLabel && <span className="offer-kicker">{offer.discountLabel}</span>}
+                <h3>{offer.title}</h3>
+                <p>{offer.description}</p>
+                <div className="hot-deal-meta">
+                  {offer.promoCode && <span>Use code <strong>{offer.promoCode}</strong></span>}
+                  {offer.endsAt && <span>Ends {new Date(offer.endsAt).toLocaleDateString("en-KE", { dateStyle: "medium" })}</span>}
+                </div>
+                <a href="#shop">Shop the deal <Icon name="arrow" size={16} /></a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
@@ -800,6 +888,8 @@ function AccountModal({ customer, isAdmin, onCustomerChange, onClose, notify, au
         email: result.user.email,
         name: result.user.user_metadata?.name,
         accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        expiresAt: Date.now() + (result.expires_in || 3600) * 1000,
       });
       notify(mode === "signup" ? "Your account is ready" : "Welcome back");
       onClose();
@@ -875,6 +965,34 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
   const [editingOffer, setEditingOffer] = useState<StoreOffer | null>(null);
   useEffect(() => {
     if (!token) return;
+    let refreshing = false;
+    const refreshIfNeeded = async () => {
+      const expiresAt = Number(sessionStorage.getItem("celly-admin-expires-at") || 0);
+      const refreshToken = sessionStorage.getItem("celly-admin-refresh-token");
+      if (refreshing || !refreshToken || !expiresAt || expiresAt - Date.now() > 5 * 60 * 1000) return;
+      refreshing = true;
+      try {
+        const session = await refreshAuthSession(refreshToken);
+        sessionStorage.setItem("celly-admin-token", session.access_token);
+        sessionStorage.setItem("celly-admin-refresh-token", session.refresh_token || refreshToken);
+        sessionStorage.setItem("celly-admin-expires-at", String(Date.now() + (session.expires_in || 3600) * 1000));
+        setToken(session.access_token);
+      } catch {
+        sessionStorage.removeItem("celly-admin-token");
+        sessionStorage.removeItem("celly-admin-refresh-token");
+        sessionStorage.removeItem("celly-admin-expires-at");
+        setToken("");
+        setError("Your session expired. Please sign in again.");
+      } finally { refreshing = false; }
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") void refreshIfNeeded(); };
+    const timer = window.setInterval(refreshIfNeeded, 60_000);
+    document.addEventListener("visibilitychange", onVisible);
+    void refreshIfNeeded();
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, [token]);
+  useEffect(() => {
+    if (!token) return;
     let active = true;
     fetch(`${API}/admin/verify`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (response) => {
@@ -884,6 +1002,8 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
       .catch((reason) => {
         if (!active) return;
         sessionStorage.removeItem("celly-admin-token");
+        sessionStorage.removeItem("celly-admin-refresh-token");
+        sessionStorage.removeItem("celly-admin-expires-at");
         setToken("");
         setError(reason instanceof Error ? reason.message : "This account does not have admin access.");
       });
@@ -954,6 +1074,8 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
   };
   const signOut = () => {
     sessionStorage.removeItem("celly-admin-token");
+    sessionStorage.removeItem("celly-admin-refresh-token");
+    sessionStorage.removeItem("celly-admin-expires-at");
     setToken("");
     setOrders([]);
     setSubscribers([]);
@@ -977,6 +1099,8 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
       const verificationResult = await verification.json().catch(() => ({}));
       if (!verification.ok) throw new Error(verificationResult.error || "This account does not have the admin role.");
       sessionStorage.setItem("celly-admin-token", result.access_token);
+      sessionStorage.setItem("celly-admin-refresh-token", result.refresh_token);
+      sessionStorage.setItem("celly-admin-expires-at", String(Date.now() + (result.expires_in || 3600) * 1000));
       setToken(result.access_token);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not sign in."); }
     finally { setBusy(false); }

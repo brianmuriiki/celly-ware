@@ -39,6 +39,19 @@ a { color: inherit; text-decoration: none; }
 .offer-banner-action > span { color: rgba(255,255,255,.78); }
 .offer-banner-action > span strong { color: white; letter-spacing: .1em; }
 .offer-banner-action a { display: inline-flex; align-items: center; gap: .4rem; border-bottom: 1px solid rgba(255,255,255,.7); padding: .4rem 0; font-size: .68rem; font-weight: 700; text-transform: uppercase; }
+.hot-deals { padding: 5rem 0; background: #f2efe9; }
+.hot-deals-live { border: 1px solid #a74932; border-radius: 999px; padding: .45rem .8rem; color: #a74932; font-size: .62rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.hot-deals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; }
+.hot-deal-card { display: grid; min-height: 16rem; overflow: hidden; border: 1px solid #e7e5e4; background: #fbfaf7; }
+.hot-deal-image { width: 100%; height: 13rem; object-fit: cover; }
+.hot-deal-copy { display: flex; flex-direction: column; align-items: flex-start; padding: 1.4rem; }
+.hot-deal-copy .offer-kicker { color: #a74932; }
+.hot-deal-copy h3 { margin-top: .4rem; font-family: "Playfair Display", serif; font-size: 1.7rem; line-height: 1.1; }
+.hot-deal-copy > p { margin-top: .6rem; color: #78716c; font-size: .78rem; line-height: 1.6; }
+.hot-deal-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-top: 1rem; color: #78716c; font-size: .65rem; }
+.hot-deal-meta strong { color: #1c1917; letter-spacing: .08em; }
+.hot-deal-copy > a { display: inline-flex; align-items: center; gap: .45rem; margin-top: auto; padding-top: 1.2rem; color: #a74932; font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.hot-deal-copy > a:hover { gap: .7rem; }
 .category-pill { flex: none; border: 1px solid #d6d3d1; border-radius: 999px; background: transparent; padding: .62rem 1rem; font-size: .7rem; font-weight: 600; }
 .category-pill.active, .category-pill:hover { border-color: #1c1917; background: #1c1917; color: white; }
 .product-card h3 { transition: color .2s; }

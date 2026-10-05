@@ -83,6 +83,15 @@ const IDLE_TIMEOUT_MS = 60 * 60 * 1000;
 const LAST_ACTIVITY_KEY = "celly-last-activity";
 const markSessionActivity = () => localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
 
+function readSavedValue<T>(key: string, fallback: T): T {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function useIdleLogout(enabled: boolean, onTimeout: () => void) {
   const onTimeoutRef = useRef(onTimeout);
   onTimeoutRef.current = onTimeout;
@@ -258,14 +267,14 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedOnly, setSavedOnly] = useState(false);
-  const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [savedIds, setSavedIds] = useState<string[]>(() => readCookieConsent() === "accepted" ? readSavedValue("celly-saved", []) : []);
+  const [cart, setCart] = useState<CartItem[]>(() => readCookieConsent() === "accepted" ? readSavedValue("celly-cart", []) : []);
   const [cartOpen, setCartOpen] = useState(false);
   const [selected, setSelected] = useState<Product | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
   const [ordersRefresh, setOrdersRefresh] = useState(0);
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(() => readCookieConsent() === "accepted" ? readSavedValue<Customer | null>("celly-customer", null) : null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 

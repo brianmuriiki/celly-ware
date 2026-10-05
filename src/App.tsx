@@ -472,20 +472,20 @@ function App() {
         <div className="bg-stone-900 px-5 py-2 text-center text-[0.65rem] font-medium uppercase tracking-[0.22em] text-white">
           Delivery countrywide · New pieces every week
         </div>
-        <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
-          <div className="flex flex-1 items-center gap-7">
-            <button className="icon-button lg:hidden" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} type="button">
+        <nav aria-label="Main navigation" className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
+          <div className="flex flex-1 items-center gap-3">
+            <button className="icon-button xl:hidden" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} type="button">
               <Icon name="menu" />
             </button>
-            <div className="hidden items-center gap-7 text-xs font-semibold uppercase tracking-widest lg:flex">
+            <a aria-label="Celly-Ware home" className="brand whitespace-nowrap" href="#">CELLY<span>WARE</span></a>
+          </div>
+          <div className="hidden flex-1 items-center justify-center gap-5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] xl:flex 2xl:gap-7 2xl:text-xs">
               <a href="#hot-deals">Hot deals</a>
               <a href="#shop">Shop</a>
               <a href="#story">Our story</a>
               <a href="#track">Track order</a>
               <a href="#contact">Contact</a>
-            </div>
           </div>
-          <a className="brand" href="#">CELLY<span>WARE</span></a>
           <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
             <button className="icon-button" aria-label="Search" onClick={() => setSearchOpen((v) => !v)} type="button">
               <Icon name="search" />
@@ -499,7 +499,7 @@ function App() {
             </button>
           </div>
         </nav>
-        {menuOpen && <nav aria-label="Mobile navigation" className="flex flex-col gap-4 border-t border-stone-200 px-5 py-4 text-xs font-semibold uppercase tracking-widest lg:hidden" onClick={() => setMenuOpen(false)}><a href="#hot-deals">Hot deals</a><a href="#shop">Shop</a><a href="#track">Track order</a><a href="#story">Our story</a><a href="#contact">Contact</a><a href="#newsletter">Newsletter</a></nav>}
+        {menuOpen && <nav aria-label="Mobile navigation" className="flex flex-col gap-4 border-t border-stone-200 px-5 py-4 text-xs font-semibold uppercase tracking-widest xl:hidden" onClick={() => setMenuOpen(false)}><a href="#hot-deals">Hot deals</a><a href="#shop">Shop</a><a href="#story">Our story</a><a href="#track">Track order</a><a href="#contact">Contact</a><a href="#newsletter">Newsletter</a></nav>}
         {searchOpen && (
           <div className="mx-auto flex max-w-2xl items-center gap-3 border-t border-stone-200 px-5 py-4">
             <Icon name="search" className="text-stone-400" />
@@ -1297,16 +1297,16 @@ function AdminPanel({ products, onProductsChange, onClose, notify, fullPage }: {
               <button className={view === "products" ? "active" : ""} onClick={() => setView("products")} type="button">Products</button>
               <button className={view === "orders" ? "active" : ""} onClick={loadOrders} type="button">Orders</button>
               <button className={view === "newsletter" ? "active" : ""} onClick={loadSubscribers} type="button">Newsletter</button>
-              <button className={view === "offers" ? "active" : ""} onClick={loadOffers} type="button">Offers</button>
+              <button className={view === "offers" ? "active" : ""} onClick={loadOffers} type="button">Hot deals</button>
               <button className={view === "finance" ? "active" : ""} onClick={loadFinance} type="button">Finance</button>
             </div>
-            <div className="admin-top"><div><p className="eyebrow">Store management</p><h2>{view === "products" ? "Products" : view === "orders" ? "Customer orders" : view === "newsletter" ? "Newsletter subscribers" : view === "offers" ? "Offers and campaigns" : "Finance overview"}</h2><p>{view === "products" ? `${products.length} active listings` : view === "orders" ? `${orders.length} orders received` : view === "newsletter" ? `${subscribers.length} subscribers` : view === "offers" ? `${offers.length} campaigns` : "Sales performance from submitted orders"}</p></div><div className="admin-actions">{view === "products" && <button className="primary-button" onClick={() => setAdding(true)} type="button"><Icon name="plus" /> Add product</button>}{view === "offers" && <button className="primary-button" onClick={() => setAddingOffer(true)} type="button"><Icon name="plus" /> Create offer</button>}<button className="secondary-button" onClick={signOut} type="button">Sign out</button></div></div>
+            <div className="admin-top"><div><p className="eyebrow">Store management</p><h2>{view === "products" ? "Products" : view === "orders" ? "Customer orders" : view === "newsletter" ? "Newsletter subscribers" : view === "offers" ? "Hot deals" : "Finance overview"}</h2><p>{view === "products" ? `${products.length} active listings` : view === "orders" ? `${orders.length} orders received` : view === "newsletter" ? `${subscribers.length} subscribers` : view === "offers" ? `${offers.length} deals` : "Sales performance from submitted orders"}</p></div><div className="admin-actions">{view === "products" && <button className="primary-button" onClick={() => setAdding(true)} type="button"><Icon name="plus" /> Add product</button>}{view === "offers" && <button className="primary-button" onClick={() => setAddingOffer(true)} type="button"><Icon name="plus" /> Post hot deal</button>}<button className="secondary-button" onClick={signOut} type="button">Sign out</button></div></div>
             {error && <p className="error">{error}</p>}
             {busy && <p className="admin-feedback" role="status">Working...</p>}
             {view === "products" ? <div className="admin-list">
               {products.map((product) => <div className="admin-row" key={product.id}><img alt="" src={product.image} /><div className="flex-1"><strong>{product.name}</strong><span>{product.category} · {money(product.price)}</span></div><button aria-label="Edit" onClick={() => setEditing(product)} type="button"><Icon name="edit" /></button><button aria-label="Delete" onClick={() => remove(product)} type="button"><Icon name="trash" /></button></div>)}
             </div> : view === "finance" ? <FinanceDashboard orders={orders} /> : view === "offers" ? <div className="offer-admin-list">
-              {!offers.length && <p className="py-12 text-center text-sm text-stone-500">No offers yet. Create a campaign to feature it on the storefront.</p>}
+              {!offers.length && <p className="py-12 text-center text-sm text-stone-500">No hot deals yet. Post a deal to feature it in the storefront Hot deals section.</p>}
               {offers.map((offer) => <article className="offer-admin-row" key={offer.id}>{offer.image && <img alt="" className="offer-admin-image" src={offer.image} />}<div className="offer-admin-copy"><div className="offer-admin-title"><strong>{offer.title}</strong><span className={`offer-state offer-state--${offerState(offer)}`}>{offerState(offer)}</span></div><p>{offer.description}</p><span>{offer.discountLabel || "Promotion"}{offer.promoCode ? ` · Code ${offer.promoCode}` : ""}</span><span>{offer.startsAt ? `Starts ${new Date(offer.startsAt).toLocaleString("en-KE")}` : "Starts now"}{offer.endsAt ? ` · Ends ${new Date(offer.endsAt).toLocaleString("en-KE")}` : " · No end date"}</span></div><div className="offer-admin-actions"><button className="secondary-button" onClick={() => setEditingOffer(offer)} type="button">Edit</button><button aria-label={`Delete ${offer.title}`} onClick={() => removeOffer(offer)} type="button"><Icon name="trash" /></button></div></article>)}
             </div> : <div className="order-list">
               {view === "orders" && !orders.length && <p className="py-12 text-center text-sm text-stone-500">No orders yet.</p>}
@@ -1449,7 +1449,7 @@ function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; 
   return (
     <form className="product-form offer-form" onSubmit={submit}>
       <button className="text-left text-xs uppercase tracking-widest text-stone-500" onClick={onCancel} type="button">← Back to offers</button>
-      <div><p className="eyebrow">Store campaign</p><h2>{initial ? "Edit offer" : "Create an offer"}</h2><p className="offer-form-intro">Live offers appear in a banner above the storefront.</p></div>
+      <div><p className="eyebrow">Store promotion</p><h2>{initial ? "Edit hot deal" : "Post a hot deal"}</h2><p className="offer-form-intro">Published deals appear in the storefront Hot deals section during the dates you set.</p></div>
       <div className="form-grid">
         <label className="sm:col-span-2">Headline<input defaultValue={initial?.title} maxLength={90} name="title" placeholder="Flash sale: 20% off this weekend" required /></label>
         <label className="sm:col-span-2">Message<textarea defaultValue={initial?.description} maxLength={300} name="description" placeholder="Tell customers what the offer includes." required rows={3} /></label>
@@ -1474,7 +1474,7 @@ function OfferForm({ initial, onCancel, onSave }: { initial: StoreOffer | null; 
         <label className="checkbox sm:col-span-2"><input defaultChecked={initial?.active ?? true} name="active" type="checkbox" /> Publish this offer</label>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      <button className="primary-button" disabled={saving} type="submit">{saving ? "Saving offer..." : initial ? "Save changes" : "Publish offer"} <Icon name="arrow" /></button>
+      <button className="primary-button" disabled={saving} type="submit">{saving ? "Saving deal..." : initial ? "Save changes" : "Publish hot deal"} <Icon name="arrow" /></button>
     </form>
   );
 }
